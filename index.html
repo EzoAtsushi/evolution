@@ -1,0 +1,1767 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>進化を見守るドット生態系</title>
+  <style>
+    :root{--bg:#0b0f14;--panel:#101826;--text:#e8eef7;--muted:#aab6c6;}
+    html,body{height:100%;}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,"Noto Sans JP","Hiragino Kaku Gothic ProN",Meiryo,sans-serif;background:linear-gradient(180deg,#06090e,#0b1220);color:var(--text);-webkit-tap-highlight-color:transparent;}
+    .wrap{max-width:980px;margin:0 auto;padding:12px;padding-bottom:calc(12px + env(safe-area-inset-bottom));}
+    header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px;}
+    h1{font-size:16px;margin:0;font-weight:700;letter-spacing:.02em;}
+    .sub{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.4;}
+    .controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;}
+    button{background:#16233a;color:var(--text);border:1px solid rgba(255,255,255,.10);border-radius:10px;padding:8px 10px;font-size:12px;font-weight:600;}
+    button:active{transform:translateY(1px);}
+    button.primary{border-color:rgba(102,217,239,.35);box-shadow:0 0 0 2px rgba(102,217,239,.10) inset;}
+    button.danger{border-color:rgba(255,107,107,.35);box-shadow:0 0 0 2px rgba(255,107,107,.08) inset;}
+    .panel{background:rgba(16,24,38,.65);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:10px;}
+    .stage{display:grid;grid-template-columns:1fr;gap:10px;}
+    .canvasWrap{display:flex;justify-content:center;align-items:center;background:rgba(0,0,0,.25);border-radius:12px;padding:10px;overflow:hidden;}
+    canvas{width:min(92vw,540px);height:auto;aspect-ratio:1/1;border-radius:10px;border:1px solid rgba(255,255,255,.10);image-rendering:pixelated;image-rendering:crisp-edges;touch-action:manipulation;}
+    .info{display:grid;grid-template-columns:1fr;gap:8px;}
+    .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between;font-size:12px;color:var(--muted);}
+    .kpi{display:none !important;}
+    .card{background:rgba(0,0,0,.18);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:10px;min-height:56px;}
+    .label{font-size:11px;color:var(--muted);}
+    .value{font-size:16px;font-weight:800;color:var(--text);margin-top:4px;}
+    .tiny{font-size:11px;color:var(--muted);margin-top:4px;line-height:1.35;}
+    .legend{display:flex;gap:10px;flex-wrap:wrap;align-items:center;font-size:11px;color:var(--muted);}
+    .dot{width:10px;height:10px;border-radius:3px;border:1px solid rgba(255,255,255,.18);display:inline-block;vertical-align:-1px;margin-right:6px;}
+    .log{max-height:140px;overflow:auto;font-size:12px;line-height:1.45;background:rgba(0,0,0,.18);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:10px;color:var(--muted);}
+    .log b{color:var(--text);}
+
+    .chart{
+      width:100%;
+      height:auto;
+      display:block;
+      margin-top:8px;
+      background: rgba(0,0,0,.12);
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 12px;
+    }
+
+    .chartLegend{
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px 12px;
+      margin-top:10px;
+      padding:8px 10px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.08);
+      background: rgba(0,0,0,.10);
+      color: rgba(255,255,255,.78);
+      font-size: 12px;
+      line-height: 1.2;
+    }
+    .legendItem{
+      display:flex;
+      align-items:center;
+      gap:6px;
+      white-space: nowrap;
+    }
+    .swatch{
+      width: 12px;
+      height: 12px;
+      border-radius: 4px;
+      border: 1px solid rgba(255,255,255,.18);
+      box-shadow: 0 0 0 1px rgba(0,0,0,.25) inset;
+      flex: 0 0 auto;
+    }
+    @media (min-width:860px){.stage{grid-template-columns:1.2fr .8fr;}.kpi{grid-template-columns:repeat(2,minmax(0,1fr));}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>進化を見守るドット生態系</h1>
+</div>
+      <div class="controls">
+        <button id="btnPause" class="primary">一時停止</button>
+        <button id="btnReset" class="danger">最初から</button>
+      </div>
+    </header>
+
+    <div class="stage">
+      <div class="panel">
+        <div class="canvasWrap">
+          <canvas id="view" width="500" height="500" aria-label="simulation"></canvas>
+        </div>
+        <div class="row" style="margin-top:10px;">
+          <div class="legend">
+            <span><span class="dot" style="background:#2563eb"></span>水</span>
+            <span><span class="dot" style="background:#8b6b3d"></span>陸</span>
+            <span><span class="dot" style="background:#22c55e"></span>草が多い</span>
+            <span><span class="dot" style="background:#1eaee6"></span>水生 草食</span>
+            <span><span class="dot" style="background:#783cff"></span>水生 肉食</span>
+            <span><span class="dot" style="background:#ff78c8"></span>両生 肉食</span>
+            <span><span class="dot" style="background:#a0e13c"></span>陸生 草食</span>
+            <span><span class="dot" style="background:#f54747"></span>陸生 肉食</span>
+          </div>
+          <div id="fps" style="font-variant-numeric: tabular-nums;">FPS: --</div>
+        </div>
+      </div>
+
+      <div class="panel info">
+        <div class="kpi">
+          <div class="card">
+            <div class="label">時間（ステップ）</div>
+            <div class="value" id="kStep">0</div>
+          </div>
+          <div class="card">
+            <div class="label">総個体数</div>
+            <div class="value" id="kPop">0</div>
+          </div>
+          <div class="card">
+            <div class="label">草食</div>
+            <div class="value" id="kHerb">0</div>
+            <div class="tiny" id="kHerbAvg">—</div>
+          </div>
+          <div class="card">
+            <div class="label">肉食</div>
+            <div class="value" id="kCarn">0</div>
+            <div class="tiny" id="kCarnAvg">—</div>
+          </div>
+        </div>
+<div class="card">
+          <div class="label">推移グラフ（種類ごとの総数）</div>
+          <canvas id="chart" class="chart" width="520" height="200" aria-label="history chart"></canvas>
+          <div class="chartLegend" aria-label="chart legend">
+            <div class="legendItem"><span class="swatch" style="background: rgb(30,174,230)"></span><span>水生 草食</span></div>
+            <div class="legendItem"><span class="swatch" style="background: rgb(120,60,255)"></span><span>水生 肉食</span></div>
+            <div class="legendItem"><span class="swatch" style="background: rgb(160,225,60)"></span><span>陸生 草食</span></div>
+            <div class="legendItem"><span class="swatch" style="background: rgb(245,71,71)"></span><span>陸生 肉食</span></div>
+            <div class="legendItem"><span class="swatch" style="background: rgb(255,120,200)"></span><span>両生 肉食</span></div>
+          </div>
+          <div class="tiny">個体数（種類別・積み上げ）</div>
+        </div>
+</div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  "use strict";
+
+  const WORLD = 250;
+  const VIEW = 500;
+  const MAX_CREATURES = 1600;
+  const START_HERB = 18;
+  const TICK_BASE = 1;
+  const GRASS_MAX = 255;
+  const PICK_RADIUS = 10;
+
+  const SHAPE_NAMES = ["ブロブ","ひし形","十字","三角","リング","バー"];
+  const SHAPE_COUNT = SHAPE_NAMES.length;
+  const HAB_NAMES = ["水生","陸生","両生"]; // 両生=水と陸の両方で生きられる
+
+  const rnd = (a=1) => Math.random() * a;
+  const rndi = (a) => (Math.random() * a) | 0;
+  const clamp = (v, lo, hi) => v < lo ? lo : (v > hi ? hi : v);
+
+  // 種と色
+  let nextSpeciesId = 1;
+  const colorCache = new Map();
+  function newSpeciesId(){ return nextSpeciesId++; }
+  function hash32(x){
+    x |= 0;
+    x = (x ^ 61) ^ (x >>> 16);
+    x = x + (x << 3);
+    x = x ^ (x >>> 4);
+    x = (x * 0x27d4eb2d) | 0;
+    x = x ^ (x >>> 15);
+    return x >>> 0;
+  }
+  function speciesColor(speciesId, diet, habitat){
+    // habitat: 0=水生, 1=陸生, 2=両生
+    const key = (speciesId << 3) | ((habitat & 3) << 1) | (diet & 1);
+    const cached = colorCache.get(key);
+    if (cached) return cached;
+
+    const h = hash32((speciesId * 2654435761) | 0);
+    const vr = ((h      ) & 31) - 15;
+    const vg = ((h >> 5 ) & 31) - 15;
+    const vb = ((h >> 10) & 31) - 15;
+
+    // まずは「ぱっと見で水/陸/両が分かる」色域に固定する
+    //  - 水生: 青〜シアン寄り（Bを高く）
+    //  - 陸生: 黄緑〜赤寄り（Bを低く）
+    //  - 両生: 黄〜ピンク寄り（岸辺で目立つ）
+    let r,g,b;
+    if (habitat === 0){ // 水生
+      if (diet === 0){ // 草食
+        r = 30  + vr*2;
+        g = 170 + vg*2;
+        b = 230 + vb*2;
+        r = clamp(r, 0, 110);
+        g = clamp(g, 90, 220);
+        b = clamp(b, 170, 255);
+      } else {         // 肉食
+        r = 120 + vr*2;
+        g = 60  + vg*2;
+        b = 255 + vb*2;
+        r = clamp(r, 70, 210);
+        g = clamp(g, 0, 140);
+        b = clamp(b, 180, 255);
+      }
+    } else if (habitat === 1){ // 陸生
+      if (diet === 0){ // 草食
+        r = 160 + vr*2;
+        g = 225 + vg*2;
+        b = 60  + vb*2;
+        r = clamp(r, 80, 230);
+        g = clamp(g, 140, 255);
+        b = clamp(b, 0, 120);
+      } else {         // 肉食
+        r = 245 + vr*2;
+        g = 70  + vg*2;
+        b = 70  + vb*2;
+        r = clamp(r, 170, 255);
+        g = clamp(g, 0, 140);
+        b = clamp(b, 0, 120);
+      }
+    } else { // 両生
+      if (diet === 0){ // 草食
+        r = 255 + vr*2;
+        g = 210 + vg*2;
+        b = 80  + vb*2;
+        r = clamp(r, 190, 255);
+        g = clamp(g, 140, 255);
+        b = clamp(b, 0, 150);
+      } else {         // 肉食
+        r = 255 + vr*2;
+        g = 120 + vg*2;
+        b = 200 + vb*2;
+        r = clamp(r, 170, 255);
+        g = clamp(g, 40, 190);
+        b = clamp(b, 120, 255);
+      }
+    }
+
+    const c = [r|0, g|0, b|0];
+    colorCache.set(key, c);
+    return c;
+  }
+
+
+  function pickShape(diet, habitat){
+    // 食性＋生活場所で、見た目の出方を変える（ぱっと見で水/陸/両が分かる）
+    // 0:ブロブ, 1:ひし形, 2:十字, 3:三角, 4:リング, 5:バー
+    let w;
+
+    if (habitat === 0){ // 水生：バー/リング多め
+      w = (diet === 0) ? [10, 10, 6, 4, 22, 48]   // 水生草食
+                       : [6,  8, 12, 22, 10, 42]; // 水生肉食
+    } else if (habitat === 1){ // 陸生：ブロブ/三角多め
+      w = (diet === 0) ? [44, 22, 6, 10, 10, 8]   // 陸生草食
+                       : [14, 10, 12, 42, 6, 16]; // 陸生肉食
+    } else { // 両生：リング/十字多め
+      w = (diet === 0) ? [10, 12, 26, 6, 36, 10]  // 両生草食
+                       : [6,  10, 28, 18, 20, 18];// 両生肉食
+    }
+
+    let sum = 0;
+    for (let i=0;i<w.length;i++) sum += w[i];
+    let r = Math.random() * sum;
+    for (let i=0;i<w.length;i++){
+      r -= w[i];
+      if (r <= 0) return i;
+    }
+    return 0;
+  }
+
+  // 名前
+  const sylA = ["ka","ki","ku","ke","ko","sa","shi","su","se","so","ta","chi","tsu","te","to","na","ni","nu","ne","no","ha","hi","fu","he","ho","ma","mi","mu","me","mo","ya","yu","yo","ra","ri","ru","re","ro","wa"];
+  const sylB = ["a","i","u","e","o","n","m","r","s","t","k","h","y"];
+  const name = () => {
+    const parts = 2 + (Math.random() < 0.35 ? 1 : 0);
+    let s = "";
+    for (let i=0;i<parts;i++) s += sylA[rndi(sylA.length)];
+    if (Math.random() < 0.25) s += sylB[rndi(sylB.length)];
+    return s[0].toUpperCase() + s.slice(1);
+  };
+
+  // DOM
+  const canvas = document.getElementById("view");
+  const vctx = canvas.getContext("2d", { alpha: false });
+  vctx.imageSmoothingEnabled = false;
+
+  const off = document.createElement("canvas");
+  off.width = WORLD;
+  off.height = WORLD;
+  const ctx = off.getContext("2d", { alpha: false });
+  ctx.imageSmoothingEnabled = false;
+
+  const img = ctx.createImageData(WORLD, WORLD);
+  const pix = img.data;
+
+  const $ = (id) => document.getElementById(id);
+  const elStep = $("kStep");
+  const elPop = $("kPop");
+  const elHerb = $("kHerb");
+  const elCarn = $("kCarn");
+  const elHerbAvg = $("kHerbAvg");
+  const elCarnAvg = $("kCarnAvg");
+  const elFPS = $("fps");
+const elFocusName = $("focusName") || { textContent:"" };
+  const elFocusDesc = $("focusDesc") || { textContent:"" };// ワールド配列
+  const terrain = new Uint8Array(WORLD * WORLD);
+  const temp = new Uint8Array(WORLD * WORLD);
+  const grass = new Uint8Array(WORLD * WORLD);
+  const shore = new Int8Array(WORLD * WORLD);
+  const nutrient = new Float32Array(WORLD * WORLD);
+  const NUT_MAX = 255;
+
+  // 両生（両生類っぽい振る舞い）：水からの距離（マンハッタン距離）
+  const distWater = new Uint16Array(WORLD * WORLD);
+  const AMPH_WATER_DIST = 10; // これより水から離れると「生きられない」
+  const AMPH_GENERALIST_COST = 0.45; // 両生は維持コストが高い（常時）
+  const AMPH_EAT_EFF = 0.72;         // 両生の食事効率（草/肉の獲得が少し弱い）
+  const AMPH_REPRO_NEED_MUL = 1.25;  // 両生の繁殖に必要なエネルギー倍率
+
+  function idx(x,y){ return y*WORLD + x; }
+
+  function habitatOK(habitat, terr){
+    // terr: 0=水, 1=陸
+    if (habitat === 2) return true; // 両生はどちらもOK
+    return (habitat === 0) ? (terr === 0) : (terr === 1);
+  }
+
+
+  function computeDistToWater(){
+    // 4近傍の最短距離（マンハッタン距離）で「水までの距離」を計算
+    const INF = 65535;
+    distWater.fill(INF);
+
+    const q = new Int32Array(WORLD * WORLD);
+    let head = 0, tail = 0;
+
+    // 水セルを全部キューに入れる
+    for (let i=0;i<terrain.length;i++){
+      if (terrain[i] === 0){
+        distWater[i] = 0;
+        q[tail++] = i;
+      }
+    }
+
+    while (head < tail){
+      const i = q[head++];
+      const d = distWater[i] + 1;
+
+      const x = i % WORLD;
+      const y = (i / WORLD) | 0;
+
+      // 左
+      if (x > 0){
+        const j = i - 1;
+        if (d < distWater[j]){ distWater[j] = d; q[tail++] = j; }
+      }
+      // 右
+      if (x < WORLD - 1){
+        const j = i + 1;
+        if (d < distWater[j]){ distWater[j] = d; q[tail++] = j; }
+      }
+      // 上
+      if (y > 0){
+        const j = i - WORLD;
+        if (d < distWater[j]){ distWater[j] = d; q[tail++] = j; }
+      }
+      // 下
+      if (y < WORLD - 1){
+        const j = i + WORLD;
+        if (d < distWater[j]){ distWater[j] = d; q[tail++] = j; }
+      }
+    }
+  }
+
+  function spawnOK(habitat, x, y){
+    // 生成・繁殖時の「生存可能」判定
+    const terr = terrain[idx(x,y)];
+    if (!habitatOK(habitat, terr)) return false;
+    if (habitat === 2){
+      return distWater[idx(x,y)] <= AMPH_WATER_DIST;
+    }
+    return true;
+  }
+
+  function addNutrient(cx, cy, amount, rad){
+    const r = rad|0;
+    for (let dy=-r; dy<=r; dy++){
+      const y = cy + dy;
+      if (y < 0 || y >= WORLD) continue;
+      for (let dx=-r; dx<=r; dx++){
+        const x = cx + dx;
+        if (x < 0 || x >= WORLD) continue;
+        const d = Math.abs(dx) + Math.abs(dy);
+        if (d > r) continue;
+        const i = idx(x,y);
+        const add = amount * (1 - d / (r + 1));
+        const v = nutrient[i] + add;
+        nutrient[i] = (v > NUT_MAX) ? NUT_MAX : v;
+      }
+    }
+  }
+
+  // 密度グリッド（群れ/縄張り）
+  const DENS = 50;
+  const DENS_CELL = WORLD / DENS;
+  const densHerb = new Uint16Array(DENS * DENS);
+  const densCarn = new Uint16Array(DENS * DENS);
+
+  function densIndex(x,y){
+    const gx = clamp((x / DENS_CELL)|0, 0, DENS-1);
+    const gy = clamp((y / DENS_CELL)|0, 0, DENS-1);
+    return gy * DENS + gx;
+  }
+
+  // 生物
+  let nextId = 1;
+  let step = 0;
+  let paused = false;
+  let focusId = 0;
+  let rootSpecies = 0;
+
+  class Creature {
+    constructor(x,y, diet, speciesId=0, habitat=-1){
+      this.id = nextId++;
+      this.nm = "";
+this.x = x;
+      this.y = y;
+      this.diet = diet;
+
+      this.species = speciesId || 0;
+      if (!this.species) this.species = newSpeciesId();
+
+      // 生活場所（見た目と行動を分ける）
+      // 0=水生（基本は水から出ない）, 1=陸生（基本は陸から出ない）, 2=両生（どちらも可）
+      if (habitat < 0){
+        const terr = terrain[idx(x,y)];
+        this.habitat = (terr === 0) ? 0 : 1;
+      } else {
+        this.habitat = habitat|0;
+      }
+
+      // 両生は肉食のみ（草食の両生は作らない）
+      if (this.habitat === 2 && this.diet === 0){
+        this.diet = 1;
+      }
+
+      this.dir = rndi(4);
+      this.shape = pickShape(this.diet, this.habitat);
+
+      this.size = clamp(1 + rndi(3), 1, 5);
+      this.speed = 0.7 + rnd(0.9);
+      this.sense = clamp(4 + rndi(10), 3, 18);
+      this.waterPref = diet === 0 ? 0.8 + rnd(0.2) : 0.4 + rnd(0.4);
+      this.tempOpt = rndi(256);
+      this.tempTol = 40 + rndi(90);
+      this.mutateP = 0.03 + rnd(0.03);
+
+      this.flock = 0.25 + rnd(0.85);
+      this.homeX = x;
+      this.homeY = y;
+      this.territory = clamp(18 + rndi(52), 12, 80);
+      this.territorial = 0.35 + rnd(0.65);
+
+      this.energy = 80 + rnd(40);
+      this.age = 0;
+      this.cooldown = 0;
+      this.alive = true;
+    }
+  }
+
+  let creatures = [];
+
+  function rebuildDensity(){
+    densHerb.fill(0);
+    densCarn.fill(0);
+    for (let i=0;i<creatures.length;i++){
+      const c = creatures[i];
+      if (!c.alive) continue;
+      const di = densIndex(c.x, c.y);
+      if (c.diet === 0) densHerb[di]++; else densCarn[di]++;
+    }
+  }
+  // ログはUIから削除（処理負荷を避けるため no-op）
+  function addLog(_s){ /* no-op */ }
+
+    // 推移グラフ（種類ごとの総数）
+  const chart = $("chart");
+  const cctx = chart.getContext("2d", { alpha:true });
+  cctx.imageSmoothingEnabled = false;
+
+  const TYPE_N = 5;
+  const TYPE_LABELS = ["水生 草食","水生 肉食","陸生 草食","陸生 肉食","両生 肉食"];
+  const TYPE_COLS = [
+    [30,174,230],  // 水生 草食
+    [120,60,255],  // 水生 肉食
+    [160,225,60],  // 陸生 草食
+    [245,71,71],   // 陸生 肉食
+    [255,120,200], // 両生 肉食
+  ];
+
+  
+
+  function typeIndex(habitat, diet){
+    // 0:水草食 1:水肉食 2:陸草食 3:陸肉食 4:両生肉食
+    if (habitat === 0) return (diet === 0) ? 0 : 1;
+    if (habitat === 1) return (diet === 0) ? 2 : 3;
+    return 4;
+  }
+const HIST_MAX = 220;
+  const SAMPLE_EVERY = 12;
+  const histSteps = [];
+  const histCounts = Array.from({length:TYPE_N}, ()=>[]);
+  let lastSample = 0;
+
+  function rgba(rgb, a){ return `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${a})`; }
+
+  function drawChart(){
+    const w = chart.width, h = chart.height;
+    cctx.clearRect(0,0,w,h);
+
+    const N = histSteps.length;
+    if (N < 2){
+      cctx.fillStyle = "rgba(255,255,255,.6)";
+      cctx.font = "12px system-ui,-apple-system,Segoe UI,Roboto";
+      cctx.fillText("データ収集中…", 10, 18);
+      return;
+    }
+
+    const padL = 34, padR = 10, padT = 10, padB = 12;
+    const plotW = Math.max(10, w - padL - padR);
+    const plotH = Math.max(10, h - padT - padB);
+
+    let maxTotal = 1;
+    for (let i=0;i<N;i++){
+      let s = 0;
+      for (let t=0;t<TYPE_N;t++) s += histCounts[t][i];
+      if (s > maxTotal) maxTotal = s;
+    }
+
+    const xAt = (i) => padL + (plotW * (i / (N - 1)));
+    const yAt = (v) => padT + plotH - (plotH * (v / maxTotal));
+
+    // grid
+    cctx.lineWidth = 1;
+    cctx.strokeStyle = "rgba(255,255,255,.10)";
+    for (let k=0;k<=4;k++){
+      const y = padT + (plotH * (k/4));
+      cctx.beginPath();
+      cctx.moveTo(padL, y);
+      cctx.lineTo(padL + plotW, y);
+      cctx.stroke();
+    }
+
+    // y labels
+    cctx.fillStyle = "rgba(255,255,255,.55)";
+    cctx.font = "10px system-ui,-apple-system,Segoe UI,Roboto";
+    cctx.fillText(String(maxTotal|0), 6, padT + 8);
+    cctx.fillText("0", 12, padT + plotH);
+
+    // stacked area
+    const stack = new Float32Array(N);
+    stack.fill(0);
+
+    for (let t=0;t<TYPE_N;t++){
+      cctx.beginPath();
+      for (let i=0;i<N;i++){
+        const x = xAt(i);
+        const y = yAt(stack[i] + histCounts[t][i]);
+        if (i===0) cctx.moveTo(x,y); else cctx.lineTo(x,y);
+      }
+      for (let i=N-1;i>=0;i--){
+        const x = xAt(i);
+        const y = yAt(stack[i]);
+        cctx.lineTo(x,y);
+      }
+      cctx.closePath();
+      cctx.fillStyle = rgba(TYPE_COLS[t], 0.55);
+      cctx.fill();
+      cctx.strokeStyle = rgba(TYPE_COLS[t], 0.95);
+      cctx.stroke();
+
+      for (let i=0;i<N;i++){
+        stack[i] += histCounts[t][i];
+      }
+    }
+  }
+
+  function recordHistory(){
+    const counts = new Uint16Array(TYPE_N);
+    for (let i=0;i<creatures.length;i++){
+      const c = creatures[i];
+      if (!c.alive) continue;
+      counts[typeIndex(c.habitat, c.diet)]++;
+    }
+    histSteps.push(step);
+    for (let t=0;t<TYPE_N;t++){
+      histCounts[t].push(counts[t]);
+    }
+
+    if (histSteps.length > HIST_MAX){
+      histSteps.shift();
+      for (let t=0;t<TYPE_N;t++){
+        histCounts[t].shift();
+      }
+    }
+    drawChart();
+  }
+
+  // 地形生成
+  function smoothNoise(){
+    const n = new Float32Array(WORLD*WORLD);
+    const seeds = 900;
+    for (let i=0;i<seeds;i++){
+      n[idx(rndi(WORLD), rndi(WORLD))] += 1.0;
+    }
+    const tmp = new Float32Array(WORLD*WORLD);
+    for (let pass=0; pass<6; pass++){
+      for (let y=0;y<WORLD;y++){
+        for (let x=0;x<WORLD;x++){
+          let s = 0, c = 0;
+          for (let dy=-1;dy<=1;dy++){
+            const yy = y+dy;
+            if (yy<0||yy>=WORLD) continue;
+            for (let dx=-1;dx<=1;dx++){
+              const xx = x+dx;
+              if (xx<0||xx>=WORLD) continue;
+              s += n[idx(xx,yy)];
+              c++;
+            }
+          }
+          tmp[idx(x,y)] = s / c;
+        }
+      }
+      n.set(tmp);
+    }
+    return n;
+  }
+
+  function smoothTerrain(passes){
+    const tmp = new Uint8Array(terrain.length);
+    for (let pass=0; pass<passes; pass++){
+      for (let y=0;y<WORLD;y++){
+        for (let x=0;x<WORLD;x++){
+          let land = 0;
+          let total = 0;
+          for (let dy=-1; dy<=1; dy++){
+            const yy = y+dy;
+            if (yy<0 || yy>=WORLD) continue;
+            for (let dx=-1; dx<=1; dx++){
+              const xx = x+dx;
+              if (xx<0 || xx>=WORLD) continue;
+              total++;
+              land += terrain[idx(xx,yy)];
+            }
+          }
+          tmp[idx(x,y)] = (land >= (total/2)) ? 1 : 0;
+        }
+      }
+      terrain.set(tmp);
+    }
+  }
+
+  function computeShore(){
+    shore.fill(0);
+    for (let y=0;y<WORLD;y++){
+      for (let x=0;x<WORLD;x++){
+        const i = idx(x,y);
+        const me = terrain[i];
+        let d = 0;
+
+        for (let dy=-1; dy<=1 && d===0; dy++){
+          const yy = y+dy;
+          if (yy<0||yy>=WORLD) continue;
+          for (let dx=-1; dx<=1; dx++){
+            if (dx===0 && dy===0) continue;
+            const xx = x+dx;
+            if (xx<0||xx>=WORLD) continue;
+            if (terrain[idx(xx,yy)] !== me){ d = 1; break; }
+          }
+        }
+
+        if (d === 0){
+          for (let dy=-2; dy<=2 && d===0; dy++){
+            const yy = y+dy;
+            if (yy<0||yy>=WORLD) continue;
+            for (let dx=-2; dx<=2; dx++){
+              if (dx===0 && dy===0) continue;
+              if ((Math.abs(dx) + Math.abs(dy)) > 2) continue;
+              const xx = x+dx;
+              if (xx<0||xx>=WORLD) continue;
+              if (terrain[idx(xx,yy)] !== me){ d = 2; break; }
+            }
+          }
+        }
+
+        shore[i] = (me ? 1 : -1) * d;
+      }
+    }
+  }
+
+  function carveLakesAndRivers(height){
+    const lakes = [];
+    const lakeCount = 3 + rndi(3);
+
+    function inBounds(x,y){ return x>=0 && x<WORLD && y>=0 && y<WORLD; }
+
+    function allLandAround(cx,cy,rad){
+      const rr = rad + 5;
+      const x0 = clamp(cx-rr, 0, WORLD-1);
+      const x1 = clamp(cx+rr, 0, WORLD-1);
+      const y0 = clamp(cy-rr, 0, WORLD-1);
+      const y1 = clamp(cy+rr, 0, WORLD-1);
+      for (let y=y0; y<=y1; y++){
+        for (let x=x0; x<=x1; x++){
+          const d = Math.hypot(x-cx, y-cy);
+          if (d > rr) continue;
+          if (terrain[idx(x,y)] === 0) return false;
+        }
+      }
+      return true;
+    }
+
+    function carveEllipseWater(cx,cy,a,b){
+      const x0 = clamp((cx - a - 2)|0, 0, WORLD-1);
+      const x1 = clamp((cx + a + 2)|0, 0, WORLD-1);
+      const y0 = clamp((cy - b - 2)|0, 0, WORLD-1);
+      const y1 = clamp((cy + b + 2)|0, 0, WORLD-1);
+      for (let y=y0; y<=y1; y++){
+        for (let x=x0; x<=x1; x++){
+          const dx = (x - cx) / a;
+          const dy = (y - cy) / b;
+          const d = dx*dx + dy*dy;
+          if (d <= 1.0){
+            if (d > 0.82 && Math.random() < 0.35) continue;
+            terrain[idx(x,y)] = 0;
+          }
+        }
+      }
+    }
+
+    for (let k=0;k<lakeCount;k++){
+      let placed = false;
+      for (let tries=0; tries<2500 && !placed; tries++){
+        const cx = rndi(WORLD);
+        const cy = rndi(WORLD);
+        if (terrain[idx(cx,cy)] !== 1) continue;
+
+        const rad = 7 + rndi(16);
+        if (!allLandAround(cx,cy,rad)) continue;
+
+        const a = rad * (0.85 + rnd(0.45));
+        const b = rad * (0.85 + rnd(0.45));
+
+        carveEllipseWater(cx,cy,a,b);
+        lakes.push({cx,cy,a,b});
+        placed = true;
+      }
+    }
+
+    const riverCount = 0;
+function carveCell(x,y,w){
+      for (let dy=-w; dy<=w; dy++){
+        for (let dx=-w; dx<=w; dx++){
+          if ((Math.abs(dx)+Math.abs(dy)) > w) continue;
+          const xx = x+dx, yy = y+dy;
+          if (!inBounds(xx,yy)) continue;
+          terrain[idx(xx,yy)] = 0;
+        }
+      }
+    }
+
+    function carveRiver(sx,sy){
+      let x = sx, y = sy;
+      let px = -999, py = -999;
+      let vx = 0, vy = 0;
+      const width = (Math.random() < 0.35) ? 2 : 1;
+      const maxSteps = 1400;
+
+      for (let stepN=0; stepN<maxSteps; stepN++){
+        const i0 = idx(x,y);
+        const alreadyWater = (terrain[i0] === 0);
+        if (stepN > 30 && alreadyWater) break;
+
+        carveCell(x,y,width);
+
+        const curH = height[i0];
+        let bestX = x, bestY = y;
+        let bestScore = 1e9;
+
+        for (let dy=-1; dy<=1; dy++){
+          for (let dx=-1; dx<=1; dx++){
+            if (dx===0 && dy===0) continue;
+            const xx = x+dx, yy = y+dy;
+            if (!inBounds(xx,yy)) continue;
+            const ii = idx(xx,yy);
+
+            let score = height[ii];
+            score += rnd(0.02);
+
+            if (vx !== 0 || vy !== 0){
+              if (dx !== vx || dy !== vy) score += 0.012;
+            }
+            if (xx === px && yy === py) score += 0.10;
+            if (terrain[ii] === 0) score -= 0.08;
+
+            if (score < bestScore){
+              bestScore = score;
+              bestX = xx;
+              bestY = yy;
+            }
+          }
+        }
+
+        if (bestScore > curH && Math.random() < 0.55){
+          const dx = (rndi(3)-1);
+          const dy = (rndi(3)-1);
+          bestX = clamp(x+dx, 0, WORLD-1);
+          bestY = clamp(y+dy, 0, WORLD-1);
+        }
+
+        vx = clamp(bestX - x, -1, 1);
+        vy = clamp(bestY - y, -1, 1);
+        px = x; py = y;
+        x = bestX; y = bestY;
+
+        if (stepN > 40 && (x===0 || y===0 || x===WORLD-1 || y===WORLD-1)) break;
+      }
+    }
+
+    for (let r=0; r<riverCount; r++){
+      let sx=0, sy=0;
+
+      if (lakes.length > 0){
+        const L = lakes[rndi(lakes.length)];
+        const ang = rnd(Math.PI*2);
+        const dirx = Math.cos(ang);
+        const diry = Math.sin(ang);
+
+        let x = (L.cx + dirx*(L.a+3))|0;
+        let y = (L.cy + diry*(L.b+3))|0;
+        x = clamp(x, 0, WORLD-1);
+        y = clamp(y, 0, WORLD-1);
+
+        for (let t=0; t<18; t++){
+          if (terrain[idx(x,y)] === 1) break;
+          x = clamp((x + dirx)|0, 0, WORLD-1);
+          y = clamp((y + diry)|0, 0, WORLD-1);
+        }
+
+        sx = x; sy = y;
+      } else {
+        for (let tries=0; tries<2000; tries++){
+          const x = rndi(WORLD), y = rndi(WORLD);
+          if (terrain[idx(x,y)] === 1){ sx=x; sy=y; break; }
+        }
+      }
+
+      if (terrain[idx(sx,sy)] === 1){
+        carveRiver(sx,sy);
+      }
+    }
+  }
+
+  function generateWorld(){
+    for (let y=0;y<WORLD;y++){
+      const t = (y/(WORLD-1))*255;
+      for (let x=0;x<WORLD;x++) temp[idx(x,y)] = t|0;
+    }
+
+    const n = smoothNoise();
+
+    const islandCount = 2; // always 2 islands
+    const centers = [];
+    const minDist = WORLD * 0.55; // keep islands apart
+
+    function pickCenter(){
+      const margin = (WORLD * 0.18) | 0;
+      return { x: margin + rndi(WORLD - margin*2), y: margin + rndi(WORLD - margin*2) };
+    }
+
+    for (let k=0;k<islandCount;k++){
+      let c;
+      let tries = 0;
+      do {
+        c = pickCenter();
+        tries++;
+        if (tries > 200) break;
+      } while (centers.some(o => Math.hypot(o.x-c.x, o.y-c.y) < minDist));
+      centers.push(c);
+    }
+
+    const sigma = WORLD * 0.19;
+    const sigma2 = 2 * sigma * sigma;
+    const amp = 0.95;
+
+    const vals = new Float32Array(WORLD*WORLD);
+    let vMin =  1e9;
+    let vMax = -1e9;
+
+    for (let y=0;y<WORLD;y++){
+      for (let x=0;x<WORLD;x++){
+        let influence = 0;
+        for (let k=0;k<centers.length;k++){
+          const dx = x - centers[k].x;
+          const dy = y - centers[k].y;
+          const g = Math.exp(-(dx*dx + dy*dy) / sigma2) * amp;
+          if (g > influence) influence = g; // max, not sum
+        }
+const edge = Math.min(x, y, WORLD-1-x, WORLD-1-y);
+        const edgeN = edge / (WORLD*0.5);
+        const edgeBias = (edgeN - 0.22) * 0.18;
+
+        const v = n[idx(x,y)] * 0.75 + influence + edgeBias;
+        const i = idx(x,y);
+        vals[i] = v;
+        if (v < vMin) vMin = v;
+        if (v > vMax) vMax = v;
+      }
+    }
+
+    const targetLand = 0.35; // reduce land to avoid land-bridge
+    const total = WORLD*WORLD;
+    const want = (total * targetLand) | 0;
+    const hist = new Uint32Array(256);
+    const span = Math.max(1e-6, vMax - vMin);
+
+    for (let i=0;i<vals.length;i++){
+      const b = clamp((((vals[i]-vMin)/span)*255)|0, 0, 255);
+      hist[b]++;
+    }
+
+    let acc = 0;
+    let thrBin = 255;
+    for (let b=255; b>=0; b--){
+      acc += hist[b];
+      if (acc >= want){ thrBin = b; break; }
+    }
+    const thr = vMin + (thrBin/255) * span;
+
+    for (let i=0;i<vals.length;i++){
+      terrain[i] = (vals[i] > thr) ? 1 : 0;
+    }
+
+    smoothTerrain(2);
+    carveLakesAndRivers(vals);
+    computeShore();
+    computeDistToWater();
+
+    for (let i=0;i<grass.length;i++){
+      const base = terrain[i] ? 70 : 40;
+      grass[i] = clamp((base + rndi(60))|0, 0, GRASS_MAX);
+    }
+
+    nutrient.fill(0);
+  }
+
+  function spawnInitial(){
+    creatures = [];
+    nextId = 1;
+    nextSpeciesId = 1;
+    colorCache.clear();
+    rootSpecies = newSpeciesId();
+    focusId = 0;
+
+    let placed = 0;
+    let tries = 0;
+    while (placed < START_HERB && tries < 20000){
+      tries++;
+      const x = rndi(WORLD);
+      const y = rndi(WORLD);
+      const i = idx(x,y);
+      if (terrain[i] !== 0) continue;
+      if (grass[i] < 20 && Math.random() < 0.85) continue;
+      creatures.push(new Creature(x,y,0,rootSpecies,0));
+      placed++;
+    }
+    addLog(`開始：草食 ${placed}（水中）`);
+  }
+
+  function growGrass(){
+    const picks = 1800;
+    for (let k=0;k<picks;k++){
+      const x = rndi(WORLD);
+      const y = rndi(WORLD);
+      const i = idx(x,y);
+
+      const tt = temp[i];
+      const mid = 128;
+      const dist = Math.abs(tt - mid);
+      const g = 2.2 - (dist/128)*1.6;
+
+      const mul = terrain[i] ? 1.0 : 0.85;
+      const lack = (GRASS_MAX - grass[i]) / GRASS_MAX;
+      let inc = (g * mul * (0.35 + lack)) * (Math.random() < 0.95 ? 1 : 3);
+
+      const nut = nutrient[i];
+      if (nut > 0.01){
+        inc *= (1 + nut * 0.004);
+        nutrient[i] = nut * 0.992;
+      }
+
+      grass[i] = clamp(grass[i] + inc, 0, GRASS_MAX);
+    }
+  }
+
+  function cellTemp(x,y){ return temp[idx(x,y)]; }
+  function cellGrass(x,y){ return grass[idx(x,y)]; }
+  function cellTerrain(x,y){ return terrain[idx(x,y)]; }
+
+  function terrainPenalty(cr, x,y){
+    const terr = cellTerrain(x,y); // 0=水, 1=陸
+
+    // 水生/陸生は「基本は出ない」を強める（両生だけ従来の好み）
+    if (cr.habitat === 0) return (terr === 0) ? 1.0 : 9.0;
+    if (cr.habitat === 1) return (terr === 1) ? 1.0 : 9.0;
+
+    // 両生：水・陸の好み（waterPref）で少し差が出る
+    const isWater = (terr === 0);
+    const mismatch = isWater ? (1 - cr.waterPref) : cr.waterPref;
+    return 1.0 + mismatch * 0.9;
+  }
+
+  function tempPenalty(cr, x,y){
+    const t = cellTemp(x,y);
+    const d = Math.abs(t - cr.tempOpt);
+    const over = Math.max(0, d - cr.tempTol);
+    return 1.0 + (over/140) * 1.8;
+  }
+
+  function metabolism(cr){
+    let m = 0.35 + cr.size * 0.10 + cr.speed * 0.05;
+    if (cr.habitat === 2) m += AMPH_GENERALIST_COST;
+    return m;
+  }
+
+  function moveCreature(cr){
+    const ox = cr.x, oy = cr.y;
+    const tries = 10;
+    let bestX = cr.x;
+    let bestY = cr.y;
+    let bestScore = -1e9;
+
+    const s = cr.sense;
+    for (let k=0;k<tries;k++){
+      const dx = rndi(s*2+1) - s;
+      const dy = rndi(s*2+1) - s;
+      let x = cr.x + dx;
+      let y = cr.y + dy;
+      if (x<0) x=0; else if (x>=WORLD) x=WORLD-1;
+      if (y<0) y=0; else if (y>=WORLD) y=WORLD-1;
+
+      // 水生/陸生は、基本的に生活場所から出ない（はっきり分ける）
+      const terrHere = cellTerrain(x,y);
+      if (!habitatOK(cr.habitat, terrHere)){
+        continue;
+      }
+
+      let score = 0;
+      score -= (tempPenalty(cr, x,y) + terrainPenalty(cr, x,y)) * 3.2;
+
+      if (cr.diet === 0){
+        score += cellGrass(x,y) * 0.08;
+      } else {
+        let prey = 0;
+        for (let t=0;t<2;t++){
+          const rx = clamp(x + (rndi(9)-4), 0, WORLD-1);
+          const ry = clamp(y + (rndi(9)-4), 0, WORLD-1);
+          for (let j=0;j<creatures.length;j++){
+            const o = creatures[j];
+            if (!o.alive || o.diet !== 0) continue;
+            if (o.x === rx && o.y === ry) prey++;
+          }
+        }
+        score += prey * 4.0;
+      }
+
+      const di = densIndex(x,y);
+      const hD = densHerb[di];
+      const cD = densCarn[di];
+
+      if (cr.diet === 0){
+        const flock = cr.flock;
+        score += flock * (hD * 1.7 - hD*hD * 0.18);
+        score -= (0.9 + flock*0.6) * cD;
+      } else {
+        score += hD * 1.4;
+        score -= cD * 2.4;
+        const dHome = Math.hypot(x - cr.homeX, y - cr.homeY);
+        const tR = Math.max(6, cr.territory);
+        if (dHome > tR){
+          score -= (dHome - tR) * (0.35 + cr.territorial*0.45);
+        } else {
+          score -= (dHome / tR) * (0.6 + cr.territorial*0.9);
+        }
+      }
+
+      // 両生：水辺から離れるほど不利（乾燥しやすい想定）
+      if (cr.habitat === 2){
+        const dw = distWater[idx(x,y)];
+        score -= dw * 0.12;
+        if (dw > AMPH_WATER_DIST){
+          const over = dw - AMPH_WATER_DIST;
+          score -= over * 1.35;
+        }
+      }
+
+      score += (Math.random() - 0.5) * 0.6;
+      if (score > bestScore){ bestScore = score; bestX = x; bestY = y; }
+    }
+
+    const dist = 1 + (cr.speed > 1.25 ? 1 : 0) + (cr.speed > 1.65 ? 1 : 0);
+    const dx = bestX - cr.x;
+    const dy = bestY - cr.y;
+    const ax = Math.abs(dx);
+    const ay = Math.abs(dy);
+
+    let nx = cr.x;
+    let ny = cr.y;
+
+    for (let k=0;k<dist;k++){
+      let tx = nx;
+      let ty = ny;
+
+      if (ax >= ay){
+        if (dx > 0) tx++; else if (dx < 0) tx--;
+      } else {
+        if (dy > 0) ty++; else if (dy < 0) ty--;
+      }
+
+      if (tx<0) tx=0; else if (tx>=WORLD) tx=WORLD-1;
+      if (ty<0) ty=0; else if (ty>=WORLD) ty=WORLD-1;
+
+      // 生活場所が違うなら、その場で止まる（両生だけ例外）
+      if (!habitatOK(cr.habitat, cellTerrain(tx,ty))) break;
+
+      nx = tx; ny = ty;
+    }
+
+    cr.x = nx;
+    cr.y = ny;
+
+    const ddx = nx - ox;
+    const ddy = ny - oy;
+    if ((ddx|0) !== 0 || (ddy|0) !== 0){
+      if (Math.abs(ddx) >= Math.abs(ddy)) cr.dir = ddx > 0 ? 1 : 3;
+      else cr.dir = ddy > 0 ? 2 : 0;
+    }
+  }
+
+  function eat(cr){
+    if (cr.diet === 0){
+      const i = idx(cr.x, cr.y);
+      const bite = clamp(8 + cr.size*3, 8, 26);
+      const take = Math.min(grass[i], bite);
+      grass[i] -= take;
+      const eff = (cr.habitat === 2) ? AMPH_EAT_EFF : 1.0;
+      cr.energy += take * 0.85 * eff;
+      return take;
+    } else {
+      let best = null;
+      let bestD = 999;
+      for (let j=0;j<creatures.length;j++){
+        const o = creatures[j];
+        if (!o.alive || o.diet !== 0) continue;
+        const d = Math.abs(o.x - cr.x) + Math.abs(o.y - cr.y);
+        if (d <= 2 && d < bestD){
+          best = o;
+          bestD = d;
+        }
+      }
+      if (!best) return 0;
+
+      let p = 0.35 + (cr.size - best.size) * 0.12;
+      if (cr.habitat === 2) p -= 0.12;
+      p = clamp(p, 0.06, 0.90);
+      if (Math.random() < p){
+        best.alive = false;
+        addNutrient(best.x, best.y, 10 + best.size * 6, 2);
+        const baseGain = 35 + best.size*18;
+        const eff = (cr.habitat === 2) ? AMPH_EAT_EFF : 1.0;
+        const gain = baseGain * eff;
+        cr.energy += gain;
+        cr.homeX = cr.x;
+        cr.homeY = cr.y;
+        addLog(`<b>${cr.nm}</b> が <b>${best.nm}</b> を捕食（+${(gain)|0}）`);
+        if (focusId === best.id) focusId = 0;
+        return gain;
+      } else {
+        cr.energy -= 5;
+        return 0;
+      }
+    }
+  }
+
+  function mutate(cr){
+    if (Math.random() < 0.6) cr.speed = clamp(cr.speed + (Math.random()-0.5)*0.35, 0.45, 2.2);
+    if (Math.random() < 0.6) cr.sense = clamp((cr.sense + (rndi(7)-3))|0, 3, 22);
+    if (Math.random() < 0.45) cr.size = clamp((cr.size + (rndi(3)-1))|0, 1, 5);
+    if (Math.random() < 0.6) cr.waterPref = clamp(cr.waterPref + (Math.random()-0.5)*0.25, 0, 1);
+    if (Math.random() < 0.5) cr.tempOpt = clamp((cr.tempOpt + (rndi(61)-30))|0, 0, 255);
+    if (Math.random() < 0.5) cr.tempTol = clamp((cr.tempTol + (rndi(41)-20))|0, 20, 160);
+    if (Math.random() < 0.35) cr.mutateP = clamp(cr.mutateP + (Math.random()-0.5)*0.02, 0.01, 0.12);
+    if (Math.random() < 0.30) cr.shape = pickShape(cr.diet, cr.habitat);
+    if (Math.random() < 0.35) cr.flock = clamp(cr.flock + (Math.random()-0.5)*0.25, 0.10, 1.20);
+    if (Math.random() < 0.25) cr.territory = clamp((cr.territory + (rndi(21)-10))|0, 10, 90);
+    if (Math.random() < 0.25) cr.territorial = clamp(cr.territorial + (Math.random()-0.5)*0.25, 0.10, 1.20);
+    if (Math.random() < 0.25) cr.territory = clamp((cr.territory + (rndi(21)-10))|0, 10, 90);
+    if (Math.random() < 0.25) cr.territorial = clamp(cr.territorial + (Math.random()-0.5)*0.25, 0.10, 1.20);    // 生活場所の変化（かなりレア）
+    // 水生/陸生 → 両生 → 水生/陸生 の順で変わりやすい
+    const oldHab = cr.habitat;
+    if (Math.random() < 0.035){
+      if (cr.habitat === 2){
+        cr.habitat = (Math.random() < 0.5) ? 0 : 1;
+      } else {
+        if (Math.random() < 0.35) cr.habitat = 2;
+      }
+    }
+
+    // 両生は「肉食のみ」に固定（現実寄り：成体は昆虫などを食べることが多い）
+    if (cr.habitat === 2){
+      if (cr.diet === 0){
+        cr.diet = 1;
+        // 草食→肉食へ変わった分、体格や好みを少し寄せる
+        cr.waterPref = clamp(cr.waterPref - 0.20 - rnd(0.15), 0, 1);
+        cr.size = clamp(cr.size + 1, 1, 5);
+      }
+      cr.shape = pickShape(1, 2);
+    } else if (oldHab === 2){
+      // 両生から戻ったときは、その生活場所に合う見た目に合わせる
+      cr.shape = pickShape(cr.diet, cr.habitat);
+    }
+}
+
+
+  function geneticDistance(a,b){
+    let d = 0;
+    d += Math.abs(a.size - b.size) / 4;
+    d += Math.abs(a.speed - b.speed) / 1.75;
+    d += Math.abs(a.sense - b.sense) / 20;
+    d += Math.abs(a.waterPref - b.waterPref);
+    d += Math.abs(a.tempOpt - b.tempOpt) / 255;
+    d += Math.abs(a.tempTol - b.tempTol) / 160;
+    d += (a.shape !== b.shape) ? 0.35 : 0;
+    return d / 6.35;
+  }
+
+  function maybeSpeciate(parent, child, mutated, dietChanged){
+    let did = false;
+    if (dietChanged){
+      child.species = newSpeciesId();
+      return true;
+    }
+    if (!mutated) return false;
+    const dist = geneticDistance(parent, child);
+    if (dist < 0.22 && Math.random() < 0.96) return false;
+    const p = clamp((dist - 0.18) * 1.35, 0.06, 0.45);
+    if (Math.random() < p){
+      child.species = newSpeciesId();
+      did = true;
+    }
+    return did;
+  }
+
+  function maybeReproduce(cr){
+    if (cr.cooldown > 0) return;
+
+    // 水生/陸生は、対応する場所でしか繁殖しない（簡単に行ったり来たりしない）
+    const terr = cellTerrain(cr.x, cr.y);
+    if (!habitatOK(cr.habitat, terr)) return;
+    if (cr.habitat === 2 && distWater[idx(cr.x, cr.y)] > AMPH_WATER_DIST) return;
+    let need = 170 + cr.size*18;
+    if (cr.habitat === 2) need *= AMPH_REPRO_NEED_MUL;
+    if (cr.energy < need) return;
+    if (creatures.length >= MAX_CREATURES) return;
+
+    cr.energy *= 0.52;
+    cr.cooldown = (cr.habitat === 2) ? (32 + rndi(36)) : (22 + rndi(25));
+
+    const child = new Creature(cr.x, cr.y, cr.diet, cr.species, cr.habitat);
+    let mutated = false;
+    let dietChanged = false;
+    let habitatChanged = false;
+
+    child.size = cr.size;
+    child.speed = cr.speed;
+    child.sense = cr.sense;
+    child.waterPref = cr.waterPref;
+    child.tempOpt = cr.tempOpt;
+    child.tempTol = cr.tempTol;
+    child.mutateP = cr.mutateP;
+    child.shape = cr.shape;
+    child.dir = cr.dir;
+
+    child.flock = cr.flock;
+    child.homeX = cr.homeX;
+    child.homeY = cr.homeY;
+    child.territory = cr.territory;
+    child.territorial = cr.territorial;
+
+    if (Math.random() < cr.mutateP){
+      mutate(child);
+      mutated = true;
+      addLog(`<b>${cr.nm}</b> の子に突然変異：<b>${child.nm}</b>`);
+    }
+
+    if (child.diet === 0 && Math.random() < (0.004 + (1-child.waterPref)*0.003)){
+      child.diet = 1;
+      dietChanged = true;
+      child.waterPref = clamp(child.waterPref - 0.25 - rnd(0.2), 0, 1);
+      child.size = clamp(child.size + 1, 1, 5);
+      child.shape = pickShape(1, child.habitat);
+      addLog(`<b>${child.nm}</b> が肉食に変化`);
+    }
+
+    // 岸の近くで、まれに「上陸」する子が生まれる（行ったり来たりはしにくい）
+    // 親が水生で岸（水↔陸の境目）に近いときだけ起きる
+    const sh = shore[idx(cr.x, cr.y)];
+    if (cr.habitat === 0 && sh < 0 && Math.random() < 0.012){
+      const cand = [];
+      for (let dy=-3; dy<=3; dy++){
+        for (let dx=-3; dx<=3; dx++){
+          if ((Math.abs(dx)+Math.abs(dy)) > 4) continue;
+          const xx = cr.x + dx;
+          const yy = cr.y + dy;
+          if (xx<0||xx>=WORLD||yy<0||yy>=WORLD) continue;
+          if (terrain[idx(xx,yy)] === 1) cand.push([xx,yy]);
+        }
+      }
+      if (cand.length){
+        const p = cand[rndi(cand.length)];
+        child.x = p[0]; child.y = p[1];
+        child.habitat = (Math.random() < 0.75) ? 2 : 1; // まず両生になりやすい
+        habitatChanged = true;
+        // 両生は肉食のみ
+        if (child.habitat === 2 && child.diet === 0){
+          child.diet = 1;
+          dietChanged = true;
+          child.waterPref = clamp(child.waterPref - 0.25 - rnd(0.20), 0, 1);
+          child.size = clamp(child.size + 1, 1, 5);
+        }
+        child.shape = pickShape(child.diet, child.habitat);
+
+        child.species = newSpeciesId(); // 生活場所が変わったら別グループになりやすい
+        addLog(`<b>${child.nm}</b> が上陸（${HAB_NAMES[child.habitat]}）`);
+      }
+    }
+
+    const speciated = maybeSpeciate(cr, child, mutated, dietChanged);
+
+    if (mutated || dietChanged || habitatChanged || speciated){
+    }
+
+    child.energy = 70 + rnd(35);
+
+    // 生まれる位置は少しだけズラす（ただし生活場所は守る）
+    const ox = child.x, oy = child.y;
+    child.x = clamp(child.x + (rndi(5)-2), 0, WORLD-1);
+    child.y = clamp(child.y + (rndi(5)-2), 0, WORLD-1);
+
+    if (!spawnOK(child.habitat, child.x, child.y)) {
+      // 近くの適正マスに置き直す（見た目の分離が崩れないように）
+      const cand2 = [];
+      for (let dy=-2; dy<=2; dy++){
+        for (let dx=-2; dx<=2; dx++){
+          const xx = ox + dx;
+          const yy = oy + dy;
+          if (xx<0||xx>=WORLD||yy<0||yy>=WORLD) continue;
+          if (spawnOK(child.habitat, xx, yy)) cand2.push([xx,yy]);
+        }
+      }
+      if (cand2.length){
+        const p2 = cand2[rndi(cand2.length)];
+        child.x = p2[0]; child.y = p2[1];
+      } else {
+        child.x = ox; child.y = oy;
+      }
+    }
+
+    creatures.push(child);
+  }
+
+  function enforceHabitat(cr){
+    // 「陸生が水」「水生が陸」にいると見た目が紛らわしいので、強制的に戻す。
+    // （本来は移動・出生で弾いているが、万一のズレ対策）
+    const terrNow = cellTerrain(cr.x, cr.y);
+    if (habitatOK(cr.habitat, terrNow)){
+      // 両生は水辺から離れると弱る（ここでは瞬間移動させず、ルール通りに弱らせる）
+      return;
+    }
+
+    const ox = cr.x, oy = cr.y;
+    let bestX = ox, bestY = oy;
+    let bestD = 1e9;
+
+    const R = 6;
+    for (let dy=-R; dy<=R; dy++){
+      const y = oy + dy;
+      if (y < 0 || y >= WORLD) continue;
+      for (let dx=-R; dx<=R; dx++){
+        const x = ox + dx;
+        if (x < 0 || x >= WORLD) continue;
+        const d = Math.abs(dx) + Math.abs(dy);
+        if (d === 0 || d > R) continue;
+        if (!spawnOK(cr.habitat, x, y)) continue;
+        if (d < bestD){
+          bestD = d; bestX = x; bestY = y;
+        }
+      }
+    }
+
+    if (bestD < 1e9){
+      cr.x = bestX; cr.y = bestY;
+    } else {
+      // どうしても戻せないなら即死
+      cr.energy = -999;
+    }
+  }
+
+  function simulateOneStep(){
+    step++;
+    growGrass();
+
+    if ((step % 2) === 0) rebuildDensity();
+
+    for (let i=0;i<creatures.length;i++){
+      const cr = creatures[i];
+      if (!cr.alive) continue;
+
+      cr.age++;
+      if (cr.cooldown > 0) cr.cooldown--;
+
+      moveCreature(cr);
+      enforceHabitat(cr);
+      eat(cr);
+
+      const mp2 = terrainPenalty(cr, cr.x, cr.y);
+      const tp2 = tempPenalty(cr, cr.x, cr.y);
+      cr.energy -= metabolism(cr) * (0.8 + mp2*0.55 + tp2*0.55);
+
+      // 生活場所の違いによる負担（間違った場所だと急激に弱る）
+      const terrNow = cellTerrain(cr.x, cr.y);
+      if (cr.habitat === 0 && terrNow === 1){
+        cr.energy -= 6.0 + cr.size * 1.2; // 水生が陸にいると乾きやすい
+      } else if (cr.habitat === 1 && terrNow === 0){
+        cr.energy -= 6.0 + cr.size * 1.2; // 陸生が水にいると弱りやすい
+      } else if (cr.habitat === 2){
+        // 両生でも「得意じゃない方」は少し負担
+        const mismatch = (terrNow === 0) ? (1 - cr.waterPref) : cr.waterPref;
+        cr.energy -= mismatch * (1.1 + cr.size * 0.35);
+
+        // 水から離れると弱る（「水辺じゃないと生きられない」）
+        const dw = distWater[idx(cr.x, cr.y)];
+        const soft = (AMPH_WATER_DIST * 0.6) | 0;
+        if (dw > soft){
+          cr.energy -= (dw - soft) * 0.35; // ちょっと離れるだけでも少し負担
+        }
+        if (dw > AMPH_WATER_DIST){
+          const over = dw - AMPH_WATER_DIST;
+          cr.energy -= 4.0 + over * 1.05 + over*over*0.06;
+        }
+      }
+
+
+      if (cr.age > 1400) cr.energy -= (cr.age - 1400) * 0.02;
+
+      if (cr.energy <= 0){
+        addNutrient(cr.x, cr.y, 14 + cr.size * 10, 3);
+        cr.alive = false;
+        if (focusId === cr.id) focusId = 0;
+      }
+
+      if (cr.alive) maybeReproduce(cr);
+    }
+
+    if ((step % 12) === 0){
+      const before = creatures.length;
+      creatures = creatures.filter(c => c.alive);
+      const dead = before - creatures.length;
+      if (dead > 0 && Math.random() < 0.35) addLog(`死亡 ${dead}`);
+    }
+
+    if (Math.random() < 0.0018){
+      const x0 = rndi(WORLD);
+      const y0 = rndi(WORLD);
+      const rad = 10 + rndi(22);
+      for (let y=Math.max(0,y0-rad); y<=Math.min(WORLD-1,y0+rad); y++){
+        for (let x=Math.max(0,x0-rad); x<=Math.min(WORLD-1,x0+rad); x++){
+          const d = Math.hypot(x-x0, y-y0);
+          if (d > rad) continue;
+          const i = idx(x,y);
+          grass[i] = (grass[i] * (0.25 + rnd(0.35)))|0;
+        }
+      }
+      addLog("環境変化：草が減少（局所）");
+    }
+  }
+
+  // 描画
+  function setPix(i, r,g,b){
+    const p = i*4;
+    pix[p] = r; pix[p+1] = g; pix[p+2] = b; pix[p+3] = 255;
+  }
+
+  function pixelInShape(cr, dx, dy, size){
+    const half = (size - 1) / 2;
+    const off  = (size % 2 === 0) ? -0.5 : 0;
+    const x = dx + off;
+    const y = dy + off;
+
+    if (size === 1) return true;
+
+    const shape = cr.shape | 0;
+
+    if (shape === 0){
+      const rr = (half + 0.20);
+      return (x*x + y*y) <= rr*rr;
+    }
+    if (shape === 1){
+      return (Math.abs(x) + Math.abs(y)) <= (half + 0.25);
+    }
+    if (shape === 2){
+      const t = 0.35;
+      const onAxis = (Math.abs(x) <= t) || (Math.abs(y) <= t);
+      if (!onAxis) return false;
+      return (Math.abs(x) <= (half + 0.35)) && (Math.abs(y) <= (half + 0.35));
+    }
+    if (shape === 3){
+      let ux = x, uy = y;
+      const dir = cr.dir | 0;
+      if (dir === 1){ ux = y;  uy = -x; }
+      else if (dir === 2){ ux = -x; uy = -y; }
+      else if (dir === 3){ ux = -y; uy = x; }
+
+      if (uy < -half - 0.35 || uy > half + 0.35) return false;
+      const prog = (uy + half) / Math.max(1e-6, (2*half));
+      const w = (0.15 + prog) * half;
+      return Math.abs(ux) <= (w + 0.35);
+    }
+    if (shape === 4){
+      const d2 = x*x + y*y;
+      const outer = (half + 0.30) * (half + 0.30);
+      const innerR = Math.max(0, half - 0.65);
+      const inner = innerR * innerR;
+      return d2 <= outer && d2 >= inner;
+    }
+    {
+      const dir = cr.dir | 0;
+      const t = 0.35;
+      if (dir === 1 || dir === 3){
+        return Math.abs(y) <= t && Math.abs(x) <= (half + 0.35);
+      }
+      return Math.abs(x) <= t && Math.abs(y) <= (half + 0.35);
+    }
+  }
+
+  function draw(){
+    for (let y=0;y<WORLD;y++){
+      for (let x=0;x<WORLD;x++){
+        const i = idx(x,y);
+        const isLand = terrain[i] === 1;
+        const gr = grass[i];
+
+        let r=0, gcol=0, b=0;
+
+        if (!isLand){
+          r = 18; gcol = 58; b = 170;
+          const algae = gr / 255;
+          gcol += 35 * algae;
+          b    += 12 * algae;
+        } else {
+          r = 175; gcol = 125; b = 78;
+          const veg = gr / 255;
+          r    -= 55 * veg;
+          gcol += 95 * veg;
+          b    -= 18 * veg;
+        }
+
+        const sh = shore[i];
+        if (sh === 1){ r=r*0.20 + 240*0.80; gcol=gcol*0.20 + 228*0.80; b=b*0.20 + 176*0.80; }
+        else if (sh === 2){ r=r*0.55 + 220*0.45; gcol=gcol*0.55 + 205*0.45; b=b*0.55 + 155*0.45; }
+        else if (sh === -1){ r=r*0.25 +  78*0.75; gcol=gcol*0.25 + 160*0.75; b=b*0.25 + 230*0.75; }
+        else if (sh === -2){ r=r*0.55 +  52*0.45; gcol=gcol*0.55 + 125*0.45; b=b*0.55 + 195*0.45; }
+
+        setPix(i, clamp(r,0,255)|0, clamp(gcol,0,255)|0, clamp(b,0,255)|0);
+      }
+    }
+
+    for (let k=0;k<creatures.length;k++){
+      const cr = creatures[k];
+      if (!cr.alive) continue;
+
+      const col = speciesColor(cr.species, cr.diet, cr.habitat);
+      const s = cr.size;
+
+      const half = (s - 1) / 2;
+      const min = -Math.floor(half);
+      const max =  Math.ceil(half);
+
+      for (let dy=min; dy<=max; dy++){
+        const y = cr.y + dy;
+        if (y<0 || y>=WORLD) continue;
+        for (let dx=min; dx<=max; dx++){
+          const x = cr.x + dx;
+          if (x<0 || x>=WORLD) continue;
+          if (!pixelInShape(cr, dx, dy, s)) continue;
+          const i = idx(x,y);
+          setPix(i, col[0], col[1], col[2]);
+        }
+      }
+
+      if (focusId === cr.id){
+        const x = cr.x, y = cr.y;
+        const br = Math.max(3, Math.ceil((s - 1) / 2) + 2);
+        for (let dy=-br; dy<=br; dy++){
+          const yy = y+dy; if (yy<0||yy>=WORLD) continue;
+          for (let dx=-br; dx<=br; dx++){
+            const xx = x+dx; if (xx<0||xx>=WORLD) continue;
+            if (Math.abs(dx)===br || Math.abs(dy)===br){
+              const i = idx(xx,yy);
+              const p = i*4;
+              pix[p]   = max(pix[p], 235);
+              pix[p+1] = max(pix[p+1], 235);
+              pix[p+2] = max(pix[p+2], 235);
+              pix[p+3] = 255;
+            }
+          }
+        }
+      }
+    }
+
+    ctx.putImageData(img, 0, 0);
+    vctx.imageSmoothingEnabled = false;
+    vctx.clearRect(0,0,VIEW,VIEW);
+    vctx.drawImage(off, 0,0, WORLD, WORLD, 0,0, VIEW, VIEW);
+  }
+  function max(a,b){ return a>b?a:b; }
+
+  // UI
+  function updateUI(){
+    let herb = 0, carn = 0;
+    let herbW=0, herbL=0, herbA=0, carnW=0, carnL=0, carnA=0;
+    let herbSpeed=0, herbSize=0, carnSpeed=0, carnSize=0;
+    const spH = new Set();
+    const spC = new Set();
+
+    for (const c of creatures){
+      if (!c.alive) continue;
+      if (c.diet === 0){
+        herb++;
+        if (c.habitat === 0) herbW++; else if (c.habitat === 1) herbL++; else herbA++;
+        herbSpeed += c.speed;
+        herbSize += c.size;
+        spH.add(c.species);
+      } else {
+        carn++;
+        if (c.habitat === 0) carnW++; else if (c.habitat === 1) carnL++; else carnA++;
+        carnSpeed += c.speed;
+        carnSize += c.size;
+        spC.add(c.species);
+      }
+    }
+
+    elStep.textContent = String(step);
+    elPop.textContent = String(herb + carn);
+    elHerb.textContent = String(herb);
+    elCarn.textContent = String(carn);
+
+    elHerbAvg.textContent = herb>0 ? `平均：大きさ ${(herbSize/herb).toFixed(2)} / 速さ ${(herbSpeed/herb).toFixed(2)} / 種数 ${spH.size}` : "—";
+    elCarnAvg.textContent = carn>0 ? `平均：大きさ ${(carnSize/carn).toFixed(2)} / 速さ ${(carnSpeed/carn).toFixed(2)} / 種数 ${spC.size}` : "—";
+
+    if ((herb + carn) === 0){
+      addLog("全滅：再スタート");
+      generateWorld();
+      spawnInitial();
+    }
+    }
+
+  function canvasToWorld(ev){
+    const rect = canvas.getBoundingClientRect();
+    const x = (ev.clientX - rect.left) / rect.width;
+    const y = (ev.clientY - rect.top) / rect.height;
+    return { wx: clamp((x * WORLD)|0, 0, WORLD-1), wy: clamp((y * WORLD)|0, 0, WORLD-1) };
+  }
+const btnPause = $("btnPause");
+  btnPause.addEventListener("click", () => {
+    paused = !paused;
+    btnPause.textContent = paused ? "再開" : "一時停止";
+  });
+
+  $("btnReset").addEventListener("click", () => {
+    step = 0;
+
+    // グラフ履歴を初期化
+    histSteps.length = 0;
+    for (let t=0;t<TYPE_N;t++){
+      histCounts[t].length = 0;
+    }
+    lastSample = 0;
+lastSample = 0;
+
+    generateWorld();
+    spawnInitial();
+    rebuildDensity();
+    updateUI();
+    draw();
+    recordHistory();
+    lastSample = step;
+  });
+
+  // ループ / FPS
+  let last = performance.now();
+  let fpsLast = last;
+  let frames = 0;
+
+  function frame(now){
+    const dt = now - last;
+    last = now;
+
+    if (!paused){
+      const stepsToRun = TICK_BASE + (dt > 40 ? 1 : 0);
+      for (let i=0;i<stepsToRun;i++) simulateOneStep();
+    }
+
+    if (!paused){
+      // 複数ステップ進むので、取りこぼさないように間引き記録
+      while ((step - lastSample) >= SAMPLE_EVERY){
+        lastSample += SAMPLE_EVERY;
+        recordHistory();
+      }
+    }
+
+    draw();
+    if ((step % 6) === 0) updateUI();
+
+    frames++;
+    if (now - fpsLast >= 1000){
+      const fps = frames * 1000 / (now - fpsLast);
+      elFPS.textContent = `FPS: ${fps.toFixed(1)}`;
+      frames = 0;
+      fpsLast = now;
+    }
+
+    requestAnimationFrame(frame);
+  }
+
+  try{
+    generateWorld();
+    spawnInitial();
+    rebuildDensity();
+    updateUI();
+    draw();
+    recordHistory();
+    lastSample = step;
+    requestAnimationFrame(frame);
+  } catch (e){
+    console.error(e);
+    alert("エラーが発生しました。コンソールを確認してください。");
+    }
+})();
+</script>
+</body>
+</html>
