@@ -1892,7 +1892,8 @@ for (let i=0;i<grass.length;i++){
     if (Math.random() < 0.25) cr.territorial = clamp(cr.territorial + (Math.random()-0.5)*0.25, 0.10, 1.20);    // 生活場所の変化（かなりレア）
     // 水生/陸生 → 両生 → 水生/陸生 の順で変わりやすい
     const oldHab = cr.habitat;
-    if (Math.random() < 0.035){
+    const habChangeP = (oldHab === 2) ? 0.12 : 0.035;
+    if (Math.random() < habChangeP){
       if (cr.habitat === 2){
         const i0 = idx(cr.x, cr.y);
         const terr0 = terrain[i0];
@@ -2014,7 +2015,7 @@ if (cr.energy < need) return;
     child.territory = cr.territory;
     child.territorial = cr.territorial;
 
-    const effMP = (cr.habitat===2) ? Math.min(0.22, cr.mutateP*1.8 + 0.03) : cr.mutateP;
+    const effMP = (cr.habitat===2) ? Math.min(0.28, cr.mutateP*2.0 + 0.04) : cr.mutateP;
 
     if (Math.random() < effMP){
       mutate(child);
@@ -2036,7 +2037,7 @@ if (cr.energy < need) return;
     // 岸の近くで、まれに「上陸」する子が生まれる（行ったり来たりはしにくい）
     // 親が水生で岸（水↔陸の境目）に近いときだけ起きる
     const sh = shore[idx(cr.x, cr.y)];
-    if (cr.habitat === 0 && sh < 0 && Math.random() < 0.012){
+    if (cr.habitat === 0 && sh < 0 && Math.random() < 0.020){
       const cand = [];
       for (let dy=-3; dy<=3; dy++){
         for (let dx=-3; dx<=3; dx++){
