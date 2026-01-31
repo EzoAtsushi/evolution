@@ -20,7 +20,19 @@
     .panel{background:rgba(16,24,38,.65);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:10px;}
     .stage{display:grid;grid-template-columns:1fr;gap:10px;}
     .canvasWrap{display:flex;justify-content:center;align-items:center;background:rgba(0,0,0,.25);border-radius:12px;padding:10px;overflow:hidden;}
-    canvas{width:min(92vw,540px);height:auto;aspect-ratio:1/1;border-radius:10px;border:1px solid rgba(255,255,255,.10);image-rendering:pixelated;image-rendering:crisp-edges;touch-action:manipulation;}
+    
+
+    .viewRow{display:flex;align-items:stretch;gap:10px;}
+    .tempBar{
+      width:14px !important;
+      height:auto !important;
+      aspect-ratio:auto !important;
+      border-radius:8px;
+      border:1px solid rgba(255,255,255,.10);
+      image-rendering:pixelated;
+      image-rendering:crisp-edges;
+    }
+#view,#chart{width:min(92vw,540px);height:auto;aspect-ratio:1/1;border-radius:10px;border:1px solid rgba(255,255,255,.10);image-rendering:pixelated;image-rendering:crisp-edges;touch-action:manipulation;}
     .info{display:grid;grid-template-columns:1fr;gap:8px;}
     .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between;font-size:12px;color:var(--muted);}
     .kpi{display:none !important;}
@@ -88,7 +100,10 @@
     <div class="stage">
       <div class="panel">
         <div class="canvasWrap">
+          <div class="viewRow">
           <canvas id="view" width="500" height="500" aria-label="simulation"></canvas>
+          <canvas id="tempBar" class="tempBar" width="14" height="500" aria-label="temperature"></canvas>
+        </div>
         </div>
         <div class="row" style="margin-top:10px;">
           <div class="legend">
@@ -136,7 +151,7 @@
             <div class="legendItem"><span class="swatch" style="background: rgb(245,71,71)"></span><span>陸生 肉食</span></div>
             <div class="legendItem"><span class="swatch" style="background: rgb(255,120,200)"></span><span>両生 肉食</span></div>
           </div>
-          <div class="tiny">個体数（種類別・積み上げ）</div>
+          <div class="tiny">個体数（種類別・折れ線）</div>
         </div>
 </div>
     </div>
@@ -161,6 +176,7 @@
   const rnd = (a=1) => Math.random() * a;
   const rndi = (a) => (Math.random() * a) | 0;
   const clamp = (v, lo, hi) => v < lo ? lo : (v > hi ? hi : v);
+  const clamp01 = (v) => v < 0 ? 0 : (v > 1 ? 1 : v);
 
   // 種と色
   let nextSpeciesId = 1;
@@ -272,6 +288,68 @@
     }
     return 0;
   }
+  function pickPattern(diet, habitat){
+    // 見た目パターン（塗り分け）：0=単色 1=斑点 2=しま 3=腹側 4=縁取り 5=中心濃淡 6=二分割 7=縁取り+模様
+    // 食性と生活場所で出やすさを変える（雰囲気づけ）
+    let w;
+    if (habitat === 0){ // 水生：しま/二分割多め（ヒレっぽく）
+      w = (diet === 0) ? [16, 10, 24, 10, 6, 10, 20, 4]   // 水生草食
+                       : [12, 8,  18, 8,  10, 12, 22, 10];// 水生肉食
+    } else if (habitat === 1){ // 陸生：斑点/縁取り多め
+      w = (diet === 0) ? [14, 22, 12, 16, 14, 10, 10, 2]  // 陸生草食
+                       : [12, 16, 10, 10, 22, 12, 12, 6]; // 陸生肉食
+    } else { // 両生：縁取り+模様や腹側が出やすい
+      w = [10, 12, 14, 18, 14, 10, 10, 12];
+    }
+
+    let sum = 0;
+    for (let i=0;i<w.length;i++) sum += w[i];
+    let r = Math.random() * sum;
+    for (let i=0;i<w.length;i++){
+      r -= w[i];
+      if (r <= 0) return i;
+    }
+    return 0;
+  }
+
+  function deriveAccent(baseCol, seed, boost=26){
+    // baseCol([r,g,b])から、少しだけ違う色を作る（同系色のまま）
+    const h = hash32(seed|0);
+    const vr = ((h      ) & 31) - 15;
+    const vg = ((h >> 5 ) & 31) - 15;
+    const vb = ((h >> 10) & 31) - 15;
+    const r = clamp(baseCol[0] + boost + vr*2, 0, 255)|0;
+    const g = clamp(baseCol[1] + boost + vg*2, 0, 255)|0;
+    const b = clamp(baseCol[2] + boost + vb*2, 0, 255)|0;
+    return [r,g,b];
+  }
+
+  function deriveOutline(baseCol){
+    // 輪郭は暗め（黒ではなく、元の色を暗く）
+    return [ (baseCol[0]*0.35)|0, (baseCol[1]*0.35)|0, (baseCol[2]*0.35)|0 ];
+  }
+
+  function isOutlinePixel(cr, dx, dy, size){
+    // 形の境界ならtrue（最大5x5なので軽い）
+    if (!pixelInShape(cr, dx, dy, size)) return false;
+    const nb = [
+      [dx+1, dy], [dx-1, dy], [dx, dy+1], [dx, dy-1]
+    ];
+    for (let k=0;k<4;k++){
+      const n = nb[k];
+      if (!pixelInShape(cr, n[0], n[1], size)) return true;
+    }
+    return false;
+  }
+
+  function facePoints(dir){
+    // dir: 0=上 1=右 2=下 3=左
+    if (dir === 0) return [[-1,-1],[ 1,-1], [0,-2]]; // eyes, mouth
+    if (dir === 1) return [[ 1,-1],[ 1, 1], [2,0]];
+    if (dir === 2) return [[-1, 1],[ 1, 1], [0, 2]];
+    return [[-1,-1],[-1, 1], [-2,0]];
+  }
+
 
   // 名前
   const sylA = ["ka","ki","ku","ke","ko","sa","shi","su","se","so","ta","chi","tsu","te","to","na","ni","nu","ne","no","ha","hi","fu","he","ho","ma","mi","mu","me","mo","ya","yu","yo","ra","ri","ru","re","ro","wa"];
@@ -289,7 +367,57 @@
   const vctx = canvas.getContext("2d", { alpha: false });
   vctx.imageSmoothingEnabled = false;
 
-  const off = document.createElement("canvas");
+  
+
+    const tempCanvas = document.getElementById("tempBar");
+  const tctx = tempCanvas.getContext("2d", { alpha: true });
+  tctx.imageSmoothingEnabled = false;
+
+  // 温度バーは「マップの縦軸」と1:1で対応させる（内部解像度はWORLD）
+  tempCanvas.width = 14;
+  tempCanvas.height = WORLD;
+
+  let tImg = tctx.createImageData(tempCanvas.width, tempCanvas.height);
+  let tData = tImg.data;
+
+  let _lastViewH = 0;
+  function syncTempBarSize(){
+    const r = canvas.getBoundingClientRect();
+    const h = Math.max(1, Math.round(r.height));
+    if (h !== _lastViewH){
+      tempCanvas.style.height = h + "px";
+      _lastViewH = h;
+    }
+  }
+
+function tempToRGB(tt){
+    const a = tt / 255;
+    const r = clamp01((a - 0.5) * 2);
+    const b = clamp01((0.5 - a) * 2);
+    const g = clamp01(1 - Math.abs(a - 0.5) * 2);
+    return [ (r*255)|0, (g*255)|0, (b*255)|0 ];
+  }
+
+  function drawTempBar(){
+    syncTempBarSize();
+    // 画面の縦方向（上→下）に沿った温度分布。季節のずれも反映。
+    const w = tempCanvas.width;
+    const h = tempCanvas.height;
+    for (let y=0;y<h;y++){
+      const tt = cellTemp(0, y); // y行の温度（季節込み）
+      const rgb = tempToRGB(tt);
+      let p = (y*w) * 4;
+      for (let x=0;x<w;x++){
+        tData[p++] = rgb[0];
+        tData[p++] = rgb[1];
+        tData[p++] = rgb[2];
+        tData[p++] = 255;
+      }
+    }
+    tctx.putImageData(tImg, 0, 0);
+  }
+
+const off = document.createElement("canvas");
   off.width = WORLD;
   off.height = WORLD;
   const ctx = off.getContext("2d", { alpha: false });
@@ -317,10 +445,26 @@ const elFocusName = $("focusName") || { textContent:"" };
 
   // 両生（両生類っぽい振る舞い）：水からの距離（マンハッタン距離）
   const distWater = new Uint16Array(WORLD * WORLD);
-  const AMPH_WATER_DIST = 10; // これより水から離れると「生きられない」
-  const AMPH_GENERALIST_COST = 0.45; // 両生は維持コストが高い（常時）
-  const AMPH_EAT_EFF = 0.72;         // 両生の食事効率（草/肉の獲得が少し弱い）
-  const AMPH_REPRO_NEED_MUL = 1.25;  // 両生の繁殖に必要なエネルギー倍率
+  const AMPH_WATER_DIST = 24; // これより水から離れると「生きられない」
+  const AMPH_GENERALIST_COST = 0.18;
+  const AMPH_TO_AQUA_HERB_P = 0.45; // 両生→水生のとき草食が生まれる確率（まれ）
+  const AMPH_TO_LAND_HERB_P = 0.28; // 両生→陸生のとき草食へ分化する確率（ゲーム用）
+  // 湿地：水辺の陸（両生類の得意ゾーン）
+  const wetland = new Uint8Array(WORLD * WORLD);
+  const WETLAND_DIST = 6;      // 水からこの距離までを湿地扱い（陸のみ）
+  const WETLAND_GRASS_MUL = 1.22;
+  const WETLAND_AMPH_HUNT_P = 0.15;   // 湿地での狩り成功率ボーナス
+  const WETLAND_AMPH_GAIN_MUL = 1.25; // 湿地での捕食エネルギー倍率
+  // 湿地の虫：湿地にだけ湧く両生類の主食（虫だけだと増えにくいバランス）
+  const bugs = new Uint16Array(WORLD * WORLD);
+  const BUG_MAX = 180;
+  const BUG_GROW_PICKS = 2600;   // 1ステップで増える地点サンプル数（軽量化）
+  const BUG_GROW_RATE = 1.0;     // 成長倍率
+  const BUG_BITE_MAX = 24;       // 1回に食べる最大量
+  const BUG_ENERGY = 1.25;       // 1虫あたりのエネルギー（小さめにして「狩りも必要」に）
+  const BUG_EAT_ONLY_IF_LOW = 140; // このエネルギー未満のときだけ虫を優先して食べる // 両生は維持コストが高い（常時）
+  const AMPH_EAT_EFF = 0.92;         // 両生の食事効率（草/肉の獲得が少し弱い）
+  const AMPH_REPRO_NEED_MUL = 0.92;  // 両生の繁殖に必要なエネルギー倍率
 
   function idx(x,y){ return y*WORLD + x; }
 
@@ -377,10 +521,100 @@ const elFocusName = $("focusName") || { textContent:"" };
     }
   }
 
+  function computeWetland(){
+    // 陸で、水から近い場所を湿地にする（湖の周りも湿地）
+    for (let i=0;i<wetland.length;i++){
+      const dw = distWater[i];
+      wetland[i] = (terrain[i]===1 && dw>0 && dw<=WETLAND_DIST) ? 1 : 0;
+    }
+  }
+  // 内陸湖（海につながっていない水）を見分ける：境界からつながる水を「海」として塗りつぶす
+  // その残りが「内陸湖」になる。全セルを保持せず、サンプルだけ持って軽量化。
+  let lakeSample = new Int32Array(4096);
+  let lakeSampleCount = 0;
+
+  function buildLakeSample(){
+    const N = WORLD * WORLD;
+    const sea = new Uint8Array(N);
+    const q = new Int32Array(N);
+    let head = 0, tail = 0;
+
+    // 境界の水から開始（ここにつながる水＝海）
+    for (let x=0; x<WORLD; x++){
+      let i1 = idx(x, 0);
+      if (terrain[i1] === 0 && sea[i1] === 0){ sea[i1]=1; q[tail++]=i1; }
+      let i2 = idx(x, WORLD-1);
+      if (terrain[i2] === 0 && sea[i2] === 0){ sea[i2]=1; q[tail++]=i2; }
+    }
+    for (let y=0; y<WORLD; y++){
+      let i1 = idx(0, y);
+      if (terrain[i1] === 0 && sea[i1] === 0){ sea[i1]=1; q[tail++]=i1; }
+      let i2 = idx(WORLD-1, y);
+      if (terrain[i2] === 0 && sea[i2] === 0){ sea[i2]=1; q[tail++]=i2; }
+    }
+
+    while (head < tail){
+      const p = q[head++];
+      const x = p % WORLD;
+      const y = (p / WORLD) | 0;
+      // 4近傍
+      if (x>0){
+        const n = p-1;
+        if (terrain[n]===0 && sea[n]===0){ sea[n]=1; q[tail++]=n; }
+      }
+      if (x<WORLD-1){
+        const n = p+1;
+        if (terrain[n]===0 && sea[n]===0){ sea[n]=1; q[tail++]=n; }
+      }
+      if (y>0){
+        const n = p-WORLD;
+        if (terrain[n]===0 && sea[n]===0){ sea[n]=1; q[tail++]=n; }
+      }
+      if (y<WORLD-1){
+        const n = p+WORLD;
+        if (terrain[n]===0 && sea[n]===0){ sea[n]=1; q[tail++]=n; }
+      }
+    }
+
+    // 内陸湖のサンプルを作る（全件は持たない）
+    lakeSampleCount = 0;
+    let seenLakes = 0;
+    const K = lakeSample.length;
+
+    for (let i=0; i<N; i++){
+      if (terrain[i] !== 0) continue;  // 水だけ
+      if (sea[i] === 1) continue;      // 海は除外
+
+      // i は内陸湖
+      seenLakes++;
+      if (lakeSampleCount < K){
+        lakeSample[lakeSampleCount++] = i;
+      } else {
+        // リザーバサンプリング：均等にランダムなサンプルを残す
+        const r = rndi(seenLakes);
+        if (r < K) lakeSample[r] = i;
+      }
+    }
+  }
+
+  function placeInLakeIfPossible(cr){
+    // 内陸湖があれば、一定確率でそこに移す（湖が空になりがちな問題の救済）
+    if (lakeSampleCount <= 0) return false;
+    if (Math.random() > 0.0) return false; // 無効化（両生の移動範囲拡大で自然に定着させる） // 10%（水生草食の子が生まれたときだけ使う）
+    const i = lakeSample[rndi(lakeSampleCount)];
+    cr.x = i % WORLD;
+    cr.y = (i / WORLD) | 0;
+    return true;
+  }
+
+
+
   function spawnOK(habitat, x, y){
     // 生成・繁殖時の「生存可能」判定
     const terr = terrain[idx(x,y)];
     if (!habitatOK(habitat, terr)) return false;
+    const ii = idx(x,y);
+    if (wetland[ii] && habitat !== 2) return false;
     if (habitat === 2){
       return distWater[idx(x,y)] <= AMPH_WATER_DIST;
     }
@@ -420,6 +654,17 @@ const elFocusName = $("focusName") || { textContent:"" };
   // 生物
   let nextId = 1;
   let step = 0;
+  // 季節：温度を全体的に揺らす（操作なしで波が出る）
+  const SEASON_PERIOD = 2400; // 何ステップで1周するか
+  const SEASON_AMP = 32;      // 温度(0..255)の揺れ幅（±）      // 温度(0..255)の揺れ幅（±）
+  const TEMP_MARGIN = 40;   // 季節で端が潰れないように、基準温度を 40..215 にする
+  let seasonOffset = 0;
+
+  function updateSeason(){
+    const phase = ((step % SEASON_PERIOD) / SEASON_PERIOD) * Math.PI * 2;
+    seasonOffset = Math.round(Math.sin(phase) * SEASON_AMP);
+  }
+
   let paused = false;
   let focusId = 0;
   let rootSpecies = 0;
@@ -452,7 +697,10 @@ this.x = x;
       this.dir = rndi(4);
       this.shape = pickShape(this.diet, this.habitat);
 
-      this.size = clamp(1 + rndi(3), 1, 5);
+
+      this.pattern = pickPattern(this.diet, this.habitat);
+      this.mark = rndi(256);
+      this.size = clamp(1 + rndi(5), 1, 9); // 1..5 start, max 9
       this.speed = 0.7 + rnd(0.9);
       this.sense = clamp(4 + rndi(10), 3, 18);
       this.waterPref = diet === 0 ? 0.8 + rnd(0.2) : 0.4 + rnd(0.4);
@@ -562,31 +810,18 @@ const HIST_MAX = 220;
     cctx.fillText(String(maxTotal|0), 6, padT + 8);
     cctx.fillText("0", 12, padT + plotH);
 
-    // stacked area
-    const stack = new Float32Array(N);
-    stack.fill(0);
+    // line chart（種類ごと）
+    cctx.lineWidth = 2;
 
     for (let t=0;t<TYPE_N;t++){
       cctx.beginPath();
       for (let i=0;i<N;i++){
         const x = xAt(i);
-        const y = yAt(stack[i] + histCounts[t][i]);
+        const y = yAt(histCounts[t][i]);
         if (i===0) cctx.moveTo(x,y); else cctx.lineTo(x,y);
       }
-      for (let i=N-1;i>=0;i--){
-        const x = xAt(i);
-        const y = yAt(stack[i]);
-        cctx.lineTo(x,y);
-      }
-      cctx.closePath();
-      cctx.fillStyle = rgba(TYPE_COLS[t], 0.55);
-      cctx.fill();
       cctx.strokeStyle = rgba(TYPE_COLS[t], 0.95);
       cctx.stroke();
-
-      for (let i=0;i<N;i++){
-        stack[i] += histCounts[t][i];
-      }
     }
   }
 
@@ -612,14 +847,14 @@ const HIST_MAX = 220;
   }
 
   // 地形生成
-  function smoothNoise(){
+  function smoothNoise(seeds=900, passes=6){
     const n = new Float32Array(WORLD*WORLD);
-    const seeds = 900;
+    // ランダムに点をばら撒いて平滑化（seedsとpassesでスケールを変える）
     for (let i=0;i<seeds;i++){
       n[idx(rndi(WORLD), rndi(WORLD))] += 1.0;
     }
     const tmp = new Float32Array(WORLD*WORLD);
-    for (let pass=0; pass<6; pass++){
+    for (let pass=0; pass<passes; pass++){
       for (let y=0;y<WORLD;y++){
         for (let x=0;x<WORLD;x++){
           let s = 0, c = 0;
@@ -664,6 +899,68 @@ const HIST_MAX = 220;
       terrain.set(tmp);
     }
   }
+  function carveMegaBay(cx, cy, R){
+    // 大胆な「大きい湾」を1つ彫る（U字っぽい入り江が出やすい）
+    // 沿岸の細かい凹凸は既存ノイズで作っているので、ここは大きな形だけ担当
+    const ang = Math.random() * Math.PI * 2;
+    const vx = Math.cos(ang), vy = Math.sin(ang);   // 中心→外側
+    const ivx = -vx, ivy = -vy;                     // 外側→中心（内向き）
+    const tx = -vy, ty = vx;                        // 接線
+
+    // 湾の中心を少し外側に置く（島を噛むように）
+    const bx = cx + vx * (R * (1.02 + Math.random()*0.12));
+    const by = cy + vy * (R * (1.02 + Math.random()*0.12));
+
+    // 口の幅(a)と奥行き(b)
+    const a = R * (0.44 + Math.random()*0.12);
+    const b = R * (0.60 + Math.random()*0.16);
+
+    // 2つ目の楕円をずらして「U字」「C字」っぽさを増やす
+    const shift = (Math.random()*2 - 1) * a * 0.30;
+    const bx2 = bx + tx * shift;
+    const by2 = by + ty * shift;
+    const a2 = a * (0.72 + Math.random()*0.10);
+    const b2 = b * (0.72 + Math.random()*0.10);
+
+    const rad = Math.ceil(a + b) + 3;
+    const minX = clamp(Math.floor(Math.min(bx,bx2) - rad), 0, WORLD-1);
+    const maxX = clamp(Math.ceil (Math.max(bx,bx2) + rad), 0, WORLD-1);
+    const minY = clamp(Math.floor(Math.min(by,by2) - rad), 0, WORLD-1);
+    const maxY = clamp(Math.ceil (Math.max(by,by2) + rad), 0, WORLD-1);
+
+    const seed = rndi(1<<30);
+
+    for (let y=minY; y<=maxY; y++){
+      for (let x=minX; x<=maxX; x++){
+        const i = idx(x,y);
+        if (terrain[i] === 0) continue;
+
+        // ちょいギザギザ（海岸のゆらぎ）
+        const h = hash32((seed ^ (x*374761393) ^ (y*668265263))|0);
+        const jitter = ((h & 255) - 128) / 128; // -1..1
+
+        // 楕円1
+        let dx = x - bx, dy = y - by;
+        let u = dx*tx + dy*ty;     // 口方向
+        let w = dx*ivx + dy*ivy;   // 島の内側方向（正が内側）
+        let v = (u*u)/(a*a) + (w*w)/(b*b);
+        let inside = (w > 0) && (v < (1.0 + jitter*0.10));
+
+        // 楕円2
+        if (!inside){
+          dx = x - bx2; dy = y - by2;
+          u = dx*tx + dy*ty;
+          w = dx*ivx + dy*ivy;
+          v = (u*u)/(a2*a2) + (w*w)/(b2*b2);
+          inside = (w > 0) && (v < (1.0 + jitter*0.10));
+        }
+
+        if (inside) terrain[i] = 0;
+      }
+    }
+  }
+
+
 
   function computeShore(){
     shore.fill(0);
@@ -705,65 +1002,181 @@ const HIST_MAX = 220;
 
   function carveLakesAndRivers(height){
     const lakes = [];
-    const lakeCount = 3 + rndi(3);
+
+    // 湖の数・大きさ・形にバリエーションを付ける
+    // mode 0: なし / 1: 少ない / 2: 混在 / 3: 小湖が多い
+    const modeR = rndi(100);
+    const mode = (modeR < 12) ? 0 : (modeR < 47) ? 1 : (modeR < 82) ? 2 : 3;
+
+    let lakeCount = 0;
+    if (mode === 0){
+      lakeCount = 0;
+    } else if (mode === 1){
+      lakeCount = 1 + rndi(3);              // 1..3
+    } else if (mode === 2){
+      lakeCount = 2 + rndi(6);              // 2..7
+    } else {
+      lakeCount = 5 + rndi(10);             // 5..14
+    }
+
+    // たまに「当たり回」で多めになる（ただし上限あり）
+    if (mode !== 0 && Math.random() < 0.16) lakeCount += 2 + rndi(6);
+    lakeCount = Math.min(lakeCount, 18);
 
     function inBounds(x,y){ return x>=0 && x<WORLD && y>=0 && y<WORLD; }
 
-    function allLandAround(cx,cy,rad){
-      const rr = rad + 5;
+    function landOKAround(cx,cy,rad,allowWaterFrac){
+      // allowWaterFrac=0 なら完全に陸に囲まれた「湖」になりやすい
+      const rr = rad + 6;
       const x0 = clamp(cx-rr, 0, WORLD-1);
       const x1 = clamp(cx+rr, 0, WORLD-1);
       const y0 = clamp(cy-rr, 0, WORLD-1);
       const y1 = clamp(cy+rr, 0, WORLD-1);
+
+      let land = 0, water = 0;
       for (let y=y0; y<=y1; y++){
         for (let x=x0; x<=x1; x++){
           const d = Math.hypot(x-cx, y-cy);
           if (d > rr) continue;
-          if (terrain[idx(x,y)] === 0) return false;
+          const t = terrain[idx(x,y)];
+          if (t === 0) water++; else land++;
+          if (allowWaterFrac === 0 && water > 0) return false;
+          const tot = land + water;
+          if (tot > 60 && (water / tot) > allowWaterFrac) return false;
         }
       }
-      return true;
+      const tot = land + water;
+      if (tot <= 0) return false;
+      return (water / tot) <= allowWaterFrac;
     }
 
-    function carveEllipseWater(cx,cy,a,b){
-      const x0 = clamp((cx - a - 2)|0, 0, WORLD-1);
-      const x1 = clamp((cx + a + 2)|0, 0, WORLD-1);
-      const y0 = clamp((cy - b - 2)|0, 0, WORLD-1);
-      const y1 = clamp((cy + b + 2)|0, 0, WORLD-1);
+    function carveEllipseWaterRot(cx,cy,a,b,ang,rag){
+      const ca = Math.cos(ang), sa = Math.sin(ang);
+      const x0 = clamp((cx - a - 3)|0, 0, WORLD-1);
+      const x1 = clamp((cx + a + 3)|0, 0, WORLD-1);
+      const y0 = clamp((cy - b - 3)|0, 0, WORLD-1);
+      const y1 = clamp((cy + b + 3)|0, 0, WORLD-1);
+
+      const seed = rndi(1<<30);
+
       for (let y=y0; y<=y1; y++){
         for (let x=x0; x<=x1; x++){
-          const dx = (x - cx) / a;
-          const dy = (y - cy) / b;
-          const d = dx*dx + dy*dy;
+          let dx = x - cx;
+          let dy = y - cy;
+          const u =  dx*ca + dy*sa;
+          const v = -dx*sa + dy*ca;
+          const uu = u / a;
+          const vv = v / b;
+          let d = uu*uu + vv*vv;
+
           if (d <= 1.0){
-            if (d > 0.82 && Math.random() < 0.35) continue;
+            // 端を少しギザギザにして自然っぽく
+            if (d > (0.78 + rag*0.06)){
+              const h = hash32((seed ^ (x*374761393) ^ (y*668265263))|0);
+              const r = (h & 255) / 255;
+              if (r < (0.18 + rag*0.18)) continue;
+              // ちょい膨らみ
+              d -= (r - 0.5) * (0.09 + rag*0.05);
+              if (d > 1.0) continue;
+            }
             terrain[idx(x,y)] = 0;
           }
         }
       }
     }
 
+    function carveBlob(cx,cy,rad){
+      // いくつかの楕円を重ねて不定形にする
+      const parts = 6 + rndi(9);
+      const baseAng = rnd(Math.PI);
+      for (let p=0; p<parts; p++){
+        const ang = baseAng + (rnd(Math.PI*2) - Math.PI);
+        const rr  = rad * (0.45 + rnd(0.35));
+        const ox  = (rnd(rad*1.1) - rad*0.55);
+        const oy  = (rnd(rad*1.1) - rad*0.55);
+        const a = rr * (0.75 + rnd(0.55));
+        const b = rr * (0.75 + rnd(0.55));
+        carveEllipseWaterRot(cx+ox, cy+oy, a, b, ang, 0.9);
+      }
+    }
+
+    function carveKidney(cx,cy,rad){
+      const ang = rnd(Math.PI);
+      const a = rad * (1.05 + rnd(0.55));
+      const b = rad * (0.70 + rnd(0.40));
+      carveEllipseWaterRot(cx, cy, a, b, ang, 0.75);
+
+      // 片側を少し削って「くびれ」感
+      const ca = Math.cos(ang), sa = Math.sin(ang);
+      const tx = -sa, ty = ca;
+      const cx2 = cx + tx * (rad * (0.22 + rnd(0.18)));
+      const cy2 = cy + ty * (rad * (0.22 + rnd(0.18)));
+      carveEllipseWaterRot(cx2, cy2, a*0.55, b*0.55, ang, 0.95);
+    }
+
+    function carveChain(cx,cy,rad){
+      // 長い湖：小楕円を連ねる
+      const ang = rnd(Math.PI);
+      const seg = 3 + rndi(7);
+      const step = rad * (0.34 + rnd(0.18));
+      const ca = Math.cos(ang), sa = Math.sin(ang);
+
+      for (let s=0; s<seg; s++){
+        const t = (s - (seg-1)/2);
+        const ox = ca * step * t + (rnd(rad*0.30) - rad*0.15);
+        const oy = sa * step * t + (rnd(rad*0.30) - rad*0.15);
+        const rr = rad * (0.55 + rnd(0.35));
+        const a = rr * (1.25 + rnd(0.95));
+        const b = rr * (0.50 + rnd(0.40));
+        carveEllipseWaterRot(cx+ox, cy+oy, a, b, ang + (rnd(0.40)-0.20), 0.65);
+      }
+    }
+
     for (let k=0;k<lakeCount;k++){
       let placed = false;
-      for (let tries=0; tries<2500 && !placed; tries++){
+
+      // たまに海岸近くの潟湖（ただし基本は湖）
+      const allowCoastal = (mode >= 2) && (Math.random() < (mode===3 ? 0.18 : 0.12));
+      const allowWaterFrac = allowCoastal ? 0.08 : 0.0;
+
+      for (let tries=0; tries<3800 && !placed; tries++){
         const cx = rndi(WORLD);
         const cy = rndi(WORLD);
         if (terrain[idx(cx,cy)] !== 1) continue;
 
-        const rad = 7 + rndi(16);
-        if (!allLandAround(cx,cy,rad)) continue;
+        let rad;
+        if (mode === 1) rad = 14 + rndi(24);
+        else if (mode === 2) rad = 10 + rndi(20);
+        else rad = 6 + rndi(12);
+if (!landOKAround(cx,cy,rad,allowWaterFrac)) continue;
 
-        const a = rad * (0.85 + rnd(0.45));
-        const b = rad * (0.85 + rnd(0.45));
+        // タイプを選ぶ
+        const tr = rndi(100);
+        let type;
+        if (mode === 1) type = (tr < 40) ? 2 : (tr < 70) ? 1 : (tr < 90) ? 3 : 0;       // 少ない時は大きめ＆長い/くびれ多め
+        else if (mode === 2) type = (tr < 35) ? 0 : (tr < 60) ? 1 : (tr < 85) ? 2 : 3;
+        else type = (tr < 60) ? 0 : (tr < 88) ? 3 : 2;
+if (type === 0){
+          const ang = rnd(Math.PI);
+          const aspect = 1.0 + rnd(1.4);
+          const a = rad * (0.85 + rnd(0.55)) * aspect;
+          const b = rad * (0.85 + rnd(0.55));
+          carveEllipseWaterRot(cx,cy,a,b,ang,0.55);
+        } else if (type === 1){
+          carveKidney(cx,cy,rad);
+        } else if (type === 2){
+          carveChain(cx,cy,rad);
+        } else {
+          carveBlob(cx,cy,rad);
+        }
 
-        carveEllipseWater(cx,cy,a,b);
-        lakes.push({cx,cy,a,b});
+        lakes.push({cx,cy,rad});
         placed = true;
       }
     }
 
     const riverCount = 0;
-function carveCell(x,y,w){
+    function carveCell(x,y,w){
       for (let dy=-w; dy<=w; dy++){
         for (let dx=-w; dx<=w; dx++){
           if ((Math.abs(dx)+Math.abs(dy)) > w) continue;
@@ -867,36 +1280,88 @@ function carveCell(x,y,w){
   }
 
   function generateWorld(){
+    // 温度：縦方向の勾配（季節で±が乗るのは cellTemp 側で処理）
     for (let y=0;y<WORLD;y++){
-      const t = (y/(WORLD-1))*255;
+      const t = TEMP_MARGIN + (y/(WORLD-1))*(255 - TEMP_MARGIN*2);
       for (let x=0;x<WORLD;x++) temp[idx(x,y)] = t|0;
     }
 
-    const n = smoothNoise();
+    // ノイズを複数スケールで合成して、海岸線を複雑にする
+    const nLow  = smoothNoise(700, 6);   // 大きなうねり
+    const nMid  = smoothNoise(5200, 3);  // 岬/湾
+    const nHigh = smoothNoise(18000, 1); // 細かいギザギザ
 
-    const islandCount = 2; // always 2 islands
-    const centers = [];
-    const minDist = WORLD * 0.55; // keep islands apart
+    function minMax(a){
+      let mn =  1e9, mx = -1e9;
+      for (let i=0;i<a.length;i++){
+        const v = a[i];
+        if (v<mn) mn=v;
+        if (v>mx) mx=v;
+      }
+      return [mn,mx];
+    }
+    const [lmn,lmx] = minMax(nLow);
+    const [mmn,mmx] = minMax(nMid);
+    const [hmn,hmx] = minMax(nHigh);
+    const lSpan = Math.max(1e-6, lmx-lmn);
+    const mSpan = Math.max(1e-6, mmx-mmn);
+    const hSpan = Math.max(1e-6, hmx-hmn);
 
-    function pickCenter(){
-      const margin = (WORLD * 0.18) | 0;
-      return { x: margin + rndi(WORLD - margin*2), y: margin + rndi(WORLD - margin*2) };
+    // 島の大枠（シルエット）を複数パターンで作る
+    const margin = (WORLD * 0.20) | 0;
+    const cx = margin + rndi(WORLD - margin*2);
+    const cy = margin + rndi(WORLD - margin*2);
+    const R  = WORLD * (0.40 + rnd(0.05));  // 基本半径
+
+    // 大胆な形の種類：0=標準 1=縦長 2=L字（曲がり） 3=離れ小島多め
+    const rPick = rndi(100);
+    const macro = (rPick < 30) ? 0 : (rPick < 55) ? 1 : (rPick < 80) ? 2 : 3;
+
+    // 主軸（縦長は縦方向に寄せる）
+    const ang = (macro === 1) ? (Math.PI/2 + (rnd(0.45)-0.225)) : (Math.random() * Math.PI);
+    const ax = Math.cos(ang), ay = Math.sin(ang);
+    const tx = -ay, ty = ax;
+
+    let aspect = 1.15 + rnd(0.25);             // 1.0=丸い、>1で主軸に長い
+    if (macro === 1) aspect = 1.75 + rnd(0.45);
+    if (macro === 2) aspect = 1.55 + rnd(0.35);
+    if (macro === 3) aspect = 1.35 + rnd(0.25);
+
+    // L字用の第2ローブ（直交方向）
+    const ang2 = ang + Math.PI/2;
+    const ax2 = Math.cos(ang2), ay2 = Math.sin(ang2);
+    const tx2 = -ay2, ty2 = ax2;
+    const cx2 = cx + ax * (R * (0.28 + rnd(0.18))) + tx * (R * (0.32 + rnd(0.20)));
+    const cy2 = cy + ay * (R * (0.28 + rnd(0.18))) + ty * (R * (0.32 + rnd(0.20)));
+    const R2  = R * (0.78 + rnd(0.12));
+    const aspect2 = 1.55 + rnd(0.35);
+
+    // 離れ小島（マクロ3のとき中心の周りに少し散らす）
+    const isletCount = (macro === 3) ? (3 + rndi(7)) : (Math.random() < 0.22 ? (2 + rndi(4)) : 0);
+    const isCX = new Float32Array(isletCount);
+    const isCY = new Float32Array(isletCount);
+    const isR  = new Float32Array(isletCount);
+    const isAmp= new Float32Array(isletCount);
+    for (let k=0;k<isletCount;k++){
+      const a = Math.random()*Math.PI*2;
+      const rr = R * (1.05 + Math.random()*0.55);
+      isCX[k] = cx + Math.cos(a)*rr + (rnd(R*0.10) - R*0.05);
+      isCY[k] = cy + Math.sin(a)*rr + (rnd(R*0.10) - R*0.05);
+      isR[k]  = R * (0.10 + Math.random()*0.08);
+      isAmp[k]= 0.75 + Math.random()*0.35;
     }
 
-    for (let k=0;k<islandCount;k++){
-      let c;
-      let tries = 0;
-      do {
-        c = pickCenter();
-        tries++;
-        if (tries > 200) break;
-      } while (centers.some(o => Math.hypot(o.x-c.x, o.y-c.y) < minDist));
-      centers.push(c);
+    function blobCore(x,y,ccx,ccy,AX,AY,TX,TY,RR,asp){
+      // aspで縦長にする
+      let dx = x - ccx;
+      let dy = y - ccy;
+      let u = dx*AX + dy*AY;   // 主軸
+      let v = dx*TX + dy*TY;   // 直交
+      u /= asp;
+      const d = Math.hypot(u, v) / RR;
+      const base = clamp(1 - d, 0, 1);
+      return Math.pow(base, 1.85);
     }
-
-    const sigma = WORLD * 0.19;
-    const sigma2 = 2 * sigma * sigma;
-    const amp = 0.95;
 
     const vals = new Float32Array(WORLD*WORLD);
     let vMin =  1e9;
@@ -904,26 +1369,56 @@ function carveCell(x,y,w){
 
     for (let y=0;y<WORLD;y++){
       for (let x=0;x<WORLD;x++){
-        let influence = 0;
-        for (let k=0;k<centers.length;k++){
-          const dx = x - centers[k].x;
-          const dy = y - centers[k].y;
-          const g = Math.exp(-(dx*dx + dy*dy) / sigma2) * amp;
-          if (g > influence) influence = g; // max, not sum
-        }
-const edge = Math.min(x, y, WORLD-1-x, WORLD-1-y);
-        const edgeN = edge / (WORLD*0.5);
-        const edgeBias = (edgeN - 0.22) * 0.18;
-
-        const v = n[idx(x,y)] * 0.75 + influence + edgeBias;
         const i = idx(x,y);
+
+        // 0..1 に正規化したノイズ
+        const lo = (nLow[i]  - lmn) / lSpan;
+        const mi = (nMid[i]  - mmn) / mSpan;
+        const hi = (nHigh[i] - hmn) / hSpan;
+
+        // 大枠（マクロ形状）
+        let core = blobCore(x,y,cx,cy,ax,ay,tx,ty,R,aspect);
+
+        // L字：第2ローブを足して「曲がり」を作る（つながる/離れるの両方が出る）
+        if (macro === 2){
+          const c2 = blobCore(x,y,cx2,cy2,ax2,ay2,tx2,ty2,R2,aspect2) * 0.98;
+          core = Math.max(core, c2);
+        }
+
+        // 離れ小島：小さなローブを加える
+        if (isletCount > 0){
+          for (let k=0;k<isletCount;k++){
+            const dx = x - isCX[k];
+            const dy = y - isCY[k];
+            const d = Math.hypot(dx,dy) / isR[k];
+            const base = clamp(1 - d, 0, 1);
+            const c = Math.pow(base, 1.65) * isAmp[k];
+            if (c > core) core = c; // 小島は独立しやすいよう max で足す
+          }
+        }
+
+        const coastW = Math.pow(1 - core, 1.15);  // 海岸線付近でノイズを強める
+
+        // 端に陸が寄りすぎないように軽いバイアス
+        const edge = Math.min(x, y, WORLD-1-x, WORLD-1-y);
+        const edgeN = edge / (WORLD*0.5);
+        const edgeBias = (edgeN - 0.18) * 0.22;
+
+        // 高さ：中心は太く、海岸はノイズでギザギザ
+        let v = core*1.35 - 0.62;
+        v += (lo - 0.5) * 0.28;                   // 大きいうねり
+        v += (mi - 0.5) * 0.95 * coastW;          // 岬/湾
+        v += (hi - 0.5) * 0.45 * coastW;          // 細かいギザギザ
+        v += edgeBias;
+
         vals[i] = v;
         if (v < vMin) vMin = v;
         if (v > vMax) vMax = v;
       }
     }
 
-    const targetLand = 0.35; // reduce land to avoid land-bridge
+    // しきい値で陸の割合を決める（細かい島が出にくいよう少し控えめ）
+    const targetLand = (macro===3) ? 0.30 : (macro===1) ? 0.42 : (macro===2) ? 0.40 : 0.38;
     const total = WORLD*WORLD;
     const want = (total * targetLand) | 0;
     const hist = new Uint32Array(256);
@@ -946,17 +1441,137 @@ const edge = Math.min(x, y, WORLD-1-x, WORLD-1-y);
       terrain[i] = (vals[i] > thr) ? 1 : 0;
     }
 
-    smoothTerrain(2);
+    // 連結成分：最大の陸塊に加えて、離れ小島を少し残す
+    (function keepLandmasses(){
+      const N = WORLD*WORLD;
+      const seen = new Uint8Array(N);
+      const q = new Int32Array(N);
+      const comps = [];
+
+      function bfsCount(start){
+        let head=0, tail=0;
+        q[tail++] = start;
+        seen[start] = 1;
+        let size = 0;
+        while (head < tail){
+          const p = q[head++];
+          size++;
+          const x = p % WORLD;
+          const y = (p / WORLD) | 0;
+          if (x>0){
+            const n = p-1;
+            if (!seen[n] && terrain[n]===1){ seen[n]=1; q[tail++]=n; }
+          }
+          if (x<WORLD-1){
+            const n = p+1;
+            if (!seen[n] && terrain[n]===1){ seen[n]=1; q[tail++]=n; }
+          }
+          if (y>0){
+            const n = p-WORLD;
+            if (!seen[n] && terrain[n]===1){ seen[n]=1; q[tail++]=n; }
+          }
+          if (y<WORLD-1){
+            const n = p+WORLD;
+            if (!seen[n] && terrain[n]===1){ seen[n]=1; q[tail++]=n; }
+          }
+        }
+        return size;
+      }
+
+      for (let i=0;i<N;i++){
+        if (terrain[i]!==1 || seen[i]) continue;
+        const size = bfsCount(i);
+        comps.push({start:i, size});
+      }
+      if (comps.length === 0) return;
+
+      comps.sort((a,b)=>b.size - a.size);
+
+      const keep = new Uint8Array(N);
+
+      function bfsKeep(start){
+        let head=0, tail=0;
+        q[tail++] = start;
+        keep[start] = 1;
+        while (head < tail){
+          const p = q[head++];
+          const x = p % WORLD;
+          const y = (p / WORLD) | 0;
+          if (x>0){
+            const n = p-1;
+            if (!keep[n] && terrain[n]===1){ keep[n]=1; q[tail++]=n; }
+          }
+          if (x<WORLD-1){
+            const n = p+1;
+            if (!keep[n] && terrain[n]===1){ keep[n]=1; q[tail++]=n; }
+          }
+          if (y>0){
+            const n = p-WORLD;
+            if (!keep[n] && terrain[n]===1){ keep[n]=1; q[tail++]=n; }
+          }
+          if (y<WORLD-1){
+            const n = p+WORLD;
+            if (!keep[n] && terrain[n]===1){ keep[n]=1; q[tail++]=n; }
+          }
+        }
+      }
+
+      // 主島（最大の連結成分）は必ず残す
+      bfsKeep(comps[0].start);
+
+      // 離れ小島を少し残す（大きすぎる島は除外）
+      const MAX_ISLETS = (macro===3) ? 8 : 4;
+      const MIN_ISLET  = (macro===3) ? 260 : 420;   // 小さすぎる点々は捨てる
+      const MAX_ISLET  = (macro===3) ? 7000 : 4200; // 2大陸化防止
+      const KEEP_P     = (macro===3) ? 0.70 : 0.45;
+
+      let kept = 0;
+      for (let c=1; c<comps.length && kept<MAX_ISLETS; c++){
+        const sz = comps[c].size;
+        if (sz < MIN_ISLET) break;
+        if (sz > MAX_ISLET) continue;
+        if (Math.random() > KEEP_P) continue;
+        bfsKeep(comps[c].start);
+        kept++;
+      }
+
+      for (let i=0;i<N;i++){
+        if (terrain[i]===1 && keep[i]===0) terrain[i] = 0;
+      }
+    })();
+
+    // 少し平滑化してギザギザの孤立を減らす
+    smoothTerrain(macro===3 ? 1 : 2);
+
+// 大きな湾で島の形を大胆に変える
+    if (macro !== 3 || Math.random() < 0.55){
+      carveMegaBay(cx, cy, R);
+      smoothTerrain(1);
+    }
+// 湖だけ作る（川は riverCount=0）
     carveLakesAndRivers(vals);
+
     computeShore();
+
+    // 内陸湖サンプルを作る（湖への定着イベント用）
+    buildLakeSample();
+
     computeDistToWater();
 
-    for (let i=0;i<grass.length;i++){
+    
+    computeWetland();
+for (let i=0;i<grass.length;i++){
       const base = terrain[i] ? 70 : 40;
       grass[i] = clamp((base + rndi(60))|0, 0, GRASS_MAX);
     }
 
     nutrient.fill(0);
+
+    // 湿地の虫を初期化
+    for (let i=0;i<bugs.length;i++){
+      if (wetland[i]) bugs[i] = (40 + rndi(70))|0;
+      else bugs[i] = 0;
+    }
   }
 
   function spawnInitial(){
@@ -989,12 +1604,13 @@ const edge = Math.min(x, y, WORLD-1-x, WORLD-1-y);
       const y = rndi(WORLD);
       const i = idx(x,y);
 
-      const tt = temp[i];
+      const tt = clamp(temp[i] + seasonOffset, 0, 255);
       const mid = 128;
       const dist = Math.abs(tt - mid);
       const g = 2.2 - (dist/128)*1.6;
 
-      const mul = terrain[i] ? 1.0 : 0.85;
+      let mul = terrain[i] ? 1.0 : 0.85;
+      if (terrain[i] && wetland[i]) mul *= WETLAND_GRASS_MUL;
       const lack = (GRASS_MAX - grass[i]) / GRASS_MAX;
       let inc = (g * mul * (0.35 + lack)) * (Math.random() < 0.95 ? 1 : 3);
 
@@ -1008,9 +1624,31 @@ const edge = Math.min(x, y, WORLD-1-x, WORLD-1-y);
     }
   }
 
-  function cellTemp(x,y){ return temp[idx(x,y)]; }
+  function growBugs(){
+    // 湿地にだけ虫が増える（軽量化のためランダムサンプル）
+    const picks = BUG_GROW_PICKS;
+    for (let k=0;k<picks;k++){
+      const x = rndi(WORLD);
+      const y = rndi(WORLD);
+      const i = idx(x,y);
+      if (!wetland[i]) continue;
+
+      const tt = clamp(temp[i] + seasonOffset, 0, 255);
+      const mid = 140;
+      const dist = Math.abs(tt - mid);
+      const f = clamp(1.0 - (dist/140), 0.0, 1.0);
+
+      const lack = (BUG_MAX - bugs[i]) / BUG_MAX;
+      let inc = (0.75 + lack) * (0.60 + f*0.70) * BUG_GROW_RATE;
+      inc *= (Math.random() < 0.92 ? 1 : 3);
+      bugs[i] = clamp(bugs[i] + inc, 0, BUG_MAX);
+    }
+  }
+
+  function cellTemp(x,y){ return clamp(temp[idx(x,y)] + seasonOffset, 0, 255); }
   function cellGrass(x,y){ return grass[idx(x,y)]; }
   function cellTerrain(x,y){ return terrain[idx(x,y)]; }
+  function cellWetland(x,y){ return wetland[idx(x,y)]; }
 
   function terrainPenalty(cr, x,y){
     const terr = cellTerrain(x,y); // 0=水, 1=陸
@@ -1034,6 +1672,8 @@ const edge = Math.min(x, y, WORLD-1-x, WORLD-1-y);
 
   function metabolism(cr){
     let m = 0.35 + cr.size * 0.10 + cr.speed * 0.05;
+    // 肉食は探索/狩りコストが大きい想定で、維持コストを上乗せ
+    if (cr.diet === 1) m += 0.18 + cr.size * 0.06;
     if (cr.habitat === 2) m += AMPH_GENERALIST_COST;
     return m;
   }
@@ -1060,6 +1700,10 @@ const edge = Math.min(x, y, WORLD-1-x, WORLD-1-y);
         continue;
       }
 
+      // 湿地は両生類だけが入れる
+      const wi = idx(x,y);
+      if (wetland[wi] && cr.habitat !== 2) continue;
+
       let score = 0;
       score -= (tempPenalty(cr, x,y) + terrainPenalty(cr, x,y)) * 3.2;
 
@@ -1077,6 +1721,13 @@ const edge = Math.min(x, y, WORLD-1-x, WORLD-1-y);
           }
         }
         score += prey * 4.0;
+
+      // 両生は湿地（水辺の陸）を好む（虫が多いほどより好む）
+      if (cr.habitat === 2 && terrHere === 1 && wetland[idx(x,y)]){
+        const bi = bugs[idx(x,y)];
+        score += 5.0 + bi * 0.045;
+      }
+
       }
 
       const di = densIndex(x,y);
@@ -1102,10 +1753,10 @@ const edge = Math.min(x, y, WORLD-1-x, WORLD-1-y);
       // 両生：水辺から離れるほど不利（乾燥しやすい想定）
       if (cr.habitat === 2){
         const dw = distWater[idx(x,y)];
-        score -= dw * 0.12;
+        score -= dw * 0.06;
         if (dw > AMPH_WATER_DIST){
           const over = dw - AMPH_WATER_DIST;
-          score -= over * 1.35;
+          score -= over * 0.85;
         }
       }
 
@@ -1113,7 +1764,10 @@ const edge = Math.min(x, y, WORLD-1-x, WORLD-1-y);
       if (score > bestScore){ bestScore = score; bestX = x; bestY = y; }
     }
 
-    const dist = 1 + (cr.speed > 1.25 ? 1 : 0) + (cr.speed > 1.65 ? 1 : 0);
+    let dist = 1 + (cr.speed > 1.25 ? 1 : 0) + (cr.speed > 1.65 ? 1 : 0);
+
+    // 両生は移動範囲を少し広めにする（内陸湖に届きやすくする）
+    if (cr.habitat === 2) dist = Math.min(3, dist + 1);
     const dx = bestX - cr.x;
     const dy = bestY - cr.y;
     const ax = Math.abs(dx);
@@ -1162,6 +1816,19 @@ const edge = Math.min(x, y, WORLD-1-x, WORLD-1-y);
       cr.energy += take * 0.85 * eff;
       return take;
     } else {
+      // 両生は湿地で「虫」を食べて生き延びる。ただし虫だけでは増えにくくして、狩りも必要にする。
+      if (cr.habitat === 2){
+        const i0 = idx(cr.x, cr.y);
+        if (wetland[i0] && bugs[i0] > 0 && cr.energy < (BUG_EAT_ONLY_IF_LOW + cr.size*8)){
+          const bite = clamp(6 + cr.size*2, 6, BUG_BITE_MAX);
+          const take = Math.min(bugs[i0], bite);
+          bugs[i0] -= take;
+          const gain = take * BUG_ENERGY * AMPH_EAT_EFF;
+          cr.energy += gain;
+          return gain;
+        }
+      }
+
       let best = null;
       let bestD = 999;
       for (let j=0;j<creatures.length;j++){
@@ -1175,15 +1842,22 @@ const edge = Math.min(x, y, WORLD-1-x, WORLD-1-y);
       }
       if (!best) return 0;
 
-      let p = 0.35 + (cr.size - best.size) * 0.12;
-      if (cr.habitat === 2) p -= 0.12;
+      // 狩りのコスト（成功/失敗に関わらず）
+      cr.energy -= 1.6 + cr.size * 0.55;
+
+      let p = 0.24 + (cr.size - best.size) * 0.09;
+      if (cr.habitat === 2){
+        // 両生は基本は少し不利だが、湿地では有利にする
+        if (wetland[idx(cr.x, cr.y)]) p += WETLAND_AMPH_HUNT_P; else p -= 0.12;
+      }
       p = clamp(p, 0.06, 0.90);
       if (Math.random() < p){
         best.alive = false;
         addNutrient(best.x, best.y, 10 + best.size * 6, 2);
-        const baseGain = 35 + best.size*18;
+        const baseGain = 26 + best.size*12; // 肉のエネルギー効率を下げる
         const eff = (cr.habitat === 2) ? AMPH_EAT_EFF : 1.0;
-        const gain = baseGain * eff;
+        let gain = baseGain * eff;
+        if (cr.habitat === 2 && wetland[idx(cr.x, cr.y)]) gain *= WETLAND_AMPH_GAIN_MUL;
         cr.energy += gain;
         cr.homeX = cr.x;
         cr.homeY = cr.y;
@@ -1191,7 +1865,7 @@ const edge = Math.min(x, y, WORLD-1-x, WORLD-1-y);
         if (focusId === best.id) focusId = 0;
         return gain;
       } else {
-        cr.energy -= 5;
+        cr.energy -= 7;
         return 0;
       }
     }
@@ -1200,12 +1874,17 @@ const edge = Math.min(x, y, WORLD-1-x, WORLD-1-y);
   function mutate(cr){
     if (Math.random() < 0.6) cr.speed = clamp(cr.speed + (Math.random()-0.5)*0.35, 0.45, 2.2);
     if (Math.random() < 0.6) cr.sense = clamp((cr.sense + (rndi(7)-3))|0, 3, 22);
-    if (Math.random() < 0.45) cr.size = clamp((cr.size + (rndi(3)-1))|0, 1, 5);
+    if (Math.random() < 0.45) cr.size = clamp(((cr.size + (rndi(3)-1))|0), 1, 9);
     if (Math.random() < 0.6) cr.waterPref = clamp(cr.waterPref + (Math.random()-0.5)*0.25, 0, 1);
     if (Math.random() < 0.5) cr.tempOpt = clamp((cr.tempOpt + (rndi(61)-30))|0, 0, 255);
     if (Math.random() < 0.5) cr.tempTol = clamp((cr.tempTol + (rndi(41)-20))|0, 20, 160);
-    if (Math.random() < 0.35) cr.mutateP = clamp(cr.mutateP + (Math.random()-0.5)*0.02, 0.01, 0.12);
+    if (Math.random() < 0.35){
+      const bias = (cr.habitat===2) ? 0.006 : 0.0;
+      cr.mutateP = clamp(cr.mutateP + (Math.random()-0.5)*0.02 + bias, 0.01, 0.16);
+    }
     if (Math.random() < 0.30) cr.shape = pickShape(cr.diet, cr.habitat);
+    if (Math.random() < 0.42) cr.pattern = pickPattern(cr.diet, cr.habitat);
+    if (Math.random() < 0.35) cr.mark = (cr.mark + rndi(251)) & 255;
     if (Math.random() < 0.35) cr.flock = clamp(cr.flock + (Math.random()-0.5)*0.25, 0.10, 1.20);
     if (Math.random() < 0.25) cr.territory = clamp((cr.territory + (rndi(21)-10))|0, 10, 90);
     if (Math.random() < 0.25) cr.territorial = clamp(cr.territorial + (Math.random()-0.5)*0.25, 0.10, 1.20);
@@ -1215,7 +1894,15 @@ const edge = Math.min(x, y, WORLD-1-x, WORLD-1-y);
     const oldHab = cr.habitat;
     if (Math.random() < 0.035){
       if (cr.habitat === 2){
-        cr.habitat = (Math.random() < 0.5) ? 0 : 1;
+        const i0 = idx(cr.x, cr.y);
+        const terr0 = terrain[i0];
+        const nearWater = distWater[i0] <= 2;
+        const nearLandInWater = (terr0 === 0) && (shore[i0] !== 0);
+        let nextHab;
+        if (terr0 === 0 && !nearLandInWater) nextHab = 0;
+        else if (terr0 === 1 && !nearWater) nextHab = 1;
+        else nextHab = (Math.random() < 0.5) ? 0 : 1;
+        cr.habitat = nextHab;
       } else {
         if (Math.random() < 0.35) cr.habitat = 2;
       }
@@ -1227,19 +1914,36 @@ const edge = Math.min(x, y, WORLD-1-x, WORLD-1-y);
         cr.diet = 1;
         // 草食→肉食へ変わった分、体格や好みを少し寄せる
         cr.waterPref = clamp(cr.waterPref - 0.20 - rnd(0.15), 0, 1);
-        cr.size = clamp(cr.size + 1, 1, 5);
+        cr.size = clamp(cr.size + 1, 1, 9);
       }
       cr.shape = pickShape(1, 2);
     } else if (oldHab === 2){
-      // 両生から戻ったときは、その生活場所に合う見た目に合わせる
+      // 両生から戻ったときは、その生活場所に合わせて「見た目」を整える
+      // さらに、両生→水生のときは「まれに草食へ分化」して、湖コロニーが生まれる余地を作る
+      if (cr.habitat === 0 && Math.random() < AMPH_TO_AQUA_HERB_P){
+        cr.diet = 0;
+        cr.waterPref = clamp(cr.waterPref + 0.25 + rnd(0.20), 0, 1);
+        if (Math.random() < 0.65) cr.size = clamp(cr.size - 1, 1, 9);
+        cr.species = newSpeciesId();
+      }
+
+      // 両生→陸生のときも、まれに草食へ分化（陸上での餌不足を減らす）
+      if (cr.habitat === 1 && Math.random() < AMPH_TO_LAND_HERB_P){
+        cr.diet = 0;
+        cr.waterPref = clamp(cr.waterPref - (0.25 + rnd(0.20)), 0, 1);
+        if (Math.random() < 0.55) cr.size = clamp(cr.size - 1, 1, 9);
+        cr.species = newSpeciesId();
+      }
       cr.shape = pickShape(cr.diet, cr.habitat);
+      cr.pattern = pickPattern(cr.diet, cr.habitat);
+      if (Math.random() < 0.5) cr.mark = (cr.mark + rndi(251)) & 255;
     }
 }
 
 
   function geneticDistance(a,b){
     let d = 0;
-    d += Math.abs(a.size - b.size) / 4;
+    d += Math.abs(a.size - b.size) / 8;
     d += Math.abs(a.speed - b.speed) / 1.75;
     d += Math.abs(a.sense - b.sense) / 20;
     d += Math.abs(a.waterPref - b.waterPref);
@@ -1274,12 +1978,17 @@ const edge = Math.min(x, y, WORLD-1-x, WORLD-1-y);
     if (!habitatOK(cr.habitat, terr)) return;
     if (cr.habitat === 2 && distWater[idx(cr.x, cr.y)] > AMPH_WATER_DIST) return;
     let need = 170 + cr.size*18;
+    if (cr.diet === 1) need += 55 + cr.size*8; // 肉食は増えにくい
     if (cr.habitat === 2) need *= AMPH_REPRO_NEED_MUL;
-    if (cr.energy < need) return;
+    
+    // 湿地（両生の主戦場）では少し繁殖しやすくする
+    if (cr.habitat === 2 && wetland[idx(cr.x, cr.y)]) need *= 0.82;
+if (cr.energy < need) return;
     if (creatures.length >= MAX_CREATURES) return;
 
     cr.energy *= 0.52;
-    cr.cooldown = (cr.habitat === 2) ? (32 + rndi(36)) : (22 + rndi(25));
+    cr.cooldown = (cr.habitat === 2) ? (26 + rndi(30)) : (22 + rndi(25));
+    if (cr.diet === 1) cr.cooldown += 10 + rndi(8); // 肉食は繁殖間隔が長い
 
     const child = new Creature(cr.x, cr.y, cr.diet, cr.species, cr.habitat);
     let mutated = false;
@@ -1296,13 +2005,18 @@ const edge = Math.min(x, y, WORLD-1-x, WORLD-1-y);
     child.shape = cr.shape;
     child.dir = cr.dir;
 
+
+    child.pattern = cr.pattern;
+    child.mark = cr.mark;
     child.flock = cr.flock;
     child.homeX = cr.homeX;
     child.homeY = cr.homeY;
     child.territory = cr.territory;
     child.territorial = cr.territorial;
 
-    if (Math.random() < cr.mutateP){
+    const effMP = (cr.habitat===2) ? Math.min(0.22, cr.mutateP*1.8 + 0.03) : cr.mutateP;
+
+    if (Math.random() < effMP){
       mutate(child);
       mutated = true;
       addLog(`<b>${cr.nm}</b> の子に突然変異：<b>${child.nm}</b>`);
@@ -1312,8 +2026,10 @@ const edge = Math.min(x, y, WORLD-1-x, WORLD-1-y);
       child.diet = 1;
       dietChanged = true;
       child.waterPref = clamp(child.waterPref - 0.25 - rnd(0.2), 0, 1);
-      child.size = clamp(child.size + 1, 1, 5);
+      child.size = clamp(child.size + 1, 1, 9);
       child.shape = pickShape(1, child.habitat);
+      child.pattern = pickPattern(child.diet, child.habitat);
+      child.mark = rndi(256);
       addLog(`<b>${child.nm}</b> が肉食に変化`);
     }
 
@@ -1334,16 +2050,20 @@ const edge = Math.min(x, y, WORLD-1-x, WORLD-1-y);
       if (cand.length){
         const p = cand[rndi(cand.length)];
         child.x = p[0]; child.y = p[1];
-        child.habitat = (Math.random() < 0.75) ? 2 : 1; // まず両生になりやすい
+        child.habitat = 2; // 水生→陸生の間は必ず両生を挟む
         habitatChanged = true;
         // 両生は肉食のみ
         if (child.habitat === 2 && child.diet === 0){
           child.diet = 1;
           dietChanged = true;
           child.waterPref = clamp(child.waterPref - 0.25 - rnd(0.20), 0, 1);
-          child.size = clamp(child.size + 1, 1, 5);
+          child.size = clamp(child.size + 1, 1, 9);
         }
         child.shape = pickShape(child.diet, child.habitat);
+
+        child.species = newSpeciesId();
+        child.pattern = pickPattern(child.diet, child.habitat);
+        child.mark = rndi(256);
 
         child.species = newSpeciesId(); // 生活場所が変わったら別グループになりやすい
         addLog(`<b>${child.nm}</b> が上陸（${HAB_NAMES[child.habitat]}）`);
@@ -1378,6 +2098,14 @@ const edge = Math.min(x, y, WORLD-1-x, WORLD-1-y);
         child.x = p2[0]; child.y = p2[1];
       } else {
         child.x = ox; child.y = oy;
+      }
+    }
+
+    // 水生の草食が生まれたとき、まれに「内陸湖へ定着」する（湖が空のままになりがちな対策）
+    if (child.habitat === 0 && child.diet === 0){
+      if (placeInLakeIfPossible(child)){
+        // 念のため（内陸湖サンプルは水なので基本OK）
+        if (!spawnOK(child.habitat, child.x, child.y)) { child.x = ox; child.y = oy; }
       }
     }
 
@@ -1423,7 +2151,9 @@ const edge = Math.min(x, y, WORLD-1-x, WORLD-1-y);
 
   function simulateOneStep(){
     step++;
+    updateSeason();
     growGrass();
+    growBugs();
 
     if ((step % 2) === 0) rebuildDensity();
 
@@ -1578,7 +2308,21 @@ const edge = Math.min(x, y, WORLD-1-x, WORLD-1-y);
           r    -= 55 * veg;
           gcol += 95 * veg;
           b    -= 18 * veg;
-        }
+        
+          // 湿地ははっきり色を変える（両生類専用ゾーン）
+          if (wetland[i]){
+            // ぬかるんだ緑（少し暗め）
+            r = r*0.80;
+            gcol = gcol*1.18;
+            b = b*0.72;
+            // 虫が多いほど少し明るく
+            const bi = bugs[i];
+            if (bi > 40){
+              const k = clamp((bi-40)/100, 0, 1);
+              r += 20*k; gcol += 26*k; b += 10*k;
+            }
+          }
+}
 
         const sh = shore[i];
         if (sh === 1){ r=r*0.20 + 240*0.80; gcol=gcol*0.20 + 228*0.80; b=b*0.20 + 176*0.80; }
@@ -1608,12 +2352,82 @@ const edge = Math.min(x, y, WORLD-1-x, WORLD-1-y);
           const x = cr.x + dx;
           if (x<0 || x>=WORLD) continue;
           if (!pixelInShape(cr, dx, dy, s)) continue;
+
           const i = idx(x,y);
-          setPix(i, col[0], col[1], col[2]);
+
+          const ptn = cr.pattern|0;
+          const base = col;
+          // 1個体の中で使う色
+          const acc  = deriveAccent(base, (cr.species ^ (cr.mark<<8) ^ (ptn<<16))|0, (cr.diet===1?18:28));
+          const out  = deriveOutline(base);
+
+          let rr = base[0], gg = base[1], bb = base[2];
+
+          // 縁取り系（境界は暗く）
+          const onEdge = (ptn === 4 || ptn === 7) ? isOutlinePixel(cr, dx, dy, s) : false;
+          if (onEdge){
+            rr = out[0]; gg = out[1]; bb = out[2];
+          } else {
+            // 模様
+            if (ptn === 1){ // 斑点
+              const h = hash32(((cr.mark<<16) ^ (dx+9) ^ ((dy+9)<<8) ^ (cr.species<<1))|0);
+              if ((h & 7) === 0) { rr=acc[0]; gg=acc[1]; bb=acc[2]; }
+            } else if (ptn === 2){ // しま
+              const v = (dx + dy + (cr.mark&3) + (cr.dir&1)) & 1;
+              if (v === 0) { rr=acc[0]; gg=acc[1]; bb=acc[2]; }
+            } else if (ptn === 3){ // 腹側（向きで切り替え）
+              if (cr.dir === 0 && dy >= 0) { rr=acc[0]; gg=acc[1]; bb=acc[2]; }
+              else if (cr.dir === 2 && dy <= 0) { rr=acc[0]; gg=acc[1]; bb=acc[2]; }
+              else if (cr.dir === 1 && dx <= 0) { rr=acc[0]; gg=acc[1]; bb=acc[2]; }
+              else if (cr.dir === 3 && dx >= 0) { rr=acc[0]; gg=acc[1]; bb=acc[2]; }
+            } else if (ptn === 5){ // 中心濃淡
+              const d2 = dx*dx + dy*dy;
+              const hh = (s-1)/2;
+              const t = (hh*hh) * 0.55 + 0.2;
+              if (d2 <= t) { rr=acc[0]; gg=acc[1]; bb=acc[2]; }
+            } else if (ptn === 6){ // 二分割（向きで縦/横）
+              if ((cr.dir&1)===0){ // 上下向き→左右で割る
+                if (dx > 0) { rr=acc[0]; gg=acc[1]; bb=acc[2]; }
+              } else { // 左右向き→上下で割る
+                if (dy > 0) { rr=acc[0]; gg=acc[1]; bb=acc[2]; }
+              }
+            } else if (ptn === 7){ // 縁取り+模様
+              const h = hash32(((cr.mark<<16) ^ (dx+13) ^ ((dy+13)<<8) ^ (cr.species<<2))|0);
+              if ((h & 3) === 0) { rr=acc[0]; gg=acc[1]; bb=acc[2]; }
+            }
+          }
+
+          setPix(i, rr|0, gg|0, bb|0);
         }
       }
 
-      if (focusId === cr.id){
+      // 目（向きに合わせる）
+      if (s >= 2){
+        const fp = facePoints(cr.dir|0);
+        // eyes
+        for (let e=0;e<2;e++){
+          const ex = cr.x + fp[e][0];
+          const ey = cr.y + fp[e][1];
+          if (ex>=0&&ex<WORLD&&ey>=0&&ey<WORLD){
+            const dx = fp[e][0], dy = fp[e][1];
+            if (pixelInShape(cr, dx, dy, s)){
+              const ii = idx(ex,ey);
+              setPix(ii, 245,245,245);
+            }
+          }
+        }
+        // mouth / beak（肉食は暗め、草食は明るめ）
+        const mx = cr.x + fp[2][0];
+        const my = cr.y + fp[2][1];
+        if (mx>=0&&mx<WORLD&&my>=0&&my<WORLD){
+          const dx = fp[2][0], dy = fp[2][1];
+          if (pixelInShape(cr, dx, dy, s)){
+            const ii = idx(mx,my);
+            if (cr.diet === 1) setPix(ii, 50,30,30);
+            else setPix(ii, 230,250,230);
+          }
+        }
+      }if (focusId === cr.id){
         const x = cr.x, y = cr.y;
         const br = Math.max(3, Math.ceil((s - 1) / 2) + 2);
         for (let dy=-br; dy<=br; dy++){
@@ -1637,7 +2451,9 @@ const edge = Math.min(x, y, WORLD-1-x, WORLD-1-y);
     vctx.imageSmoothingEnabled = false;
     vctx.clearRect(0,0,VIEW,VIEW);
     vctx.drawImage(off, 0,0, WORLD, WORLD, 0,0, VIEW, VIEW);
-  }
+  
+    drawTempBar();
+}
   function max(a,b){ return a>b?a:b; }
 
   // UI
@@ -1677,6 +2493,8 @@ const edge = Math.min(x, y, WORLD-1-x, WORLD-1-y);
       addLog("全滅：再スタート");
       generateWorld();
       spawnInitial();
+    updateSeason();
+    syncTempBarSize();
     }
     }
 
@@ -1695,7 +2513,9 @@ const btnPause = $("btnPause");
   $("btnReset").addEventListener("click", () => {
     step = 0;
 
-    // グラフ履歴を初期化
+    
+    updateSeason();
+// グラフ履歴を初期化
     histSteps.length = 0;
     for (let t=0;t<TYPE_N;t++){
       histCounts[t].length = 0;
@@ -1746,6 +2566,8 @@ lastSample = 0;
     }
 
     requestAnimationFrame(frame);
+
+  window.addEventListener("resize", () => { syncTempBarSize(); });
   }
 
   try{
