@@ -708,7 +708,14 @@ this.x = x;
       this.tempTol = 40 + rndi(90);
       this.mutateP = 0.03 + rnd(0.03);
 
-      this.flock = 0.25 + rnd(0.85);
+
+      // 行動様式の遺伝子（0..1）：探索・定住・慎重・群れ
+      this.explore  = rnd();
+      this.homeBias = rnd();
+      this.cautious = rnd();
+      this.social   = rnd();
+
+      this.flock = clamp(0.20 + this.social * 0.95, 0.10, 1.20);
       this.homeX = x;
       this.homeY = y;
       this.territory = clamp(18 + rndi(52), 12, 80);
@@ -1685,7 +1692,7 @@ for (let i=0;i<grass.length;i++){
     let bestY = cr.y;
     let bestScore = -1e9;
 
-    const s = cr.sense;
+    const s = clamp((Math.round(cr.sense * (0.75 + cr.explore*0.90) / (0.95 + cr.homeBias*0.70)))|0, 3, 22);
     for (let k=0;k<tries;k++){
       const dx = rndi(s*2+1) - s;
       const dy = rndi(s*2+1) - s;
@@ -1735,18 +1742,30 @@ for (let i=0;i<grass.length;i++){
       const cD = densCarn[di];
 
       if (cr.diet === 0){
-        const flock = cr.flock;
+        const social = cr.social;
+        const cautious = cr.cautious;
+
+        // 群れ性：同種密度がほどほどだと有利（群れすぎると不利）
+        const flock = clamp(0.20 + social * 0.95, 0.10, 1.20);
         score += flock * (hD * 1.7 - hD*hD * 0.18);
-        score -= (0.9 + flock*0.6) * cD;
+
+        // 慎重：捕食者密度をより強く嫌う
+        score -= (0.85 + flock*0.70) * cD * (0.75 + cautious*1.10);
+
+        // 定住/探索：生まれた場所（home）からの距離の好み
+        const dHome = Math.hypot(x - cr.homeX, y - cr.homeY);
+        score -= dHome * (0.04 + cr.homeBias*0.10);
+        score += dHome * (cr.explore * 0.06) * (1 - cr.homeBias);
+
       } else {
-        score += hD * 1.4;
-        score -= cD * 2.4;
+        score += hD * (1.15 + cr.explore*0.35);
+        score -= cD * 2.4 * (0.85 + cr.cautious*0.55) * (1.15 - cr.social*0.40);
         const dHome = Math.hypot(x - cr.homeX, y - cr.homeY);
         const tR = Math.max(6, cr.territory);
         if (dHome > tR){
-          score -= (dHome - tR) * (0.35 + cr.territorial*0.45);
+          score -= (dHome - tR) * (0.35 + cr.territorial*0.45) * (0.70 + cr.homeBias*0.80);
         } else {
-          score -= (dHome / tR) * (0.6 + cr.territorial*0.9);
+          score -= (dHome / tR) * (0.6 + cr.territorial*0.9) * (0.80 + cr.homeBias*0.60);
         }
       }
 
@@ -1760,7 +1779,8 @@ for (let i=0;i<grass.length;i++){
         }
       }
 
-      score += (Math.random() - 0.5) * 0.6;
+      const mood = (0.35 + cr.explore*0.90) * (1.0 - cr.cautious*0.75);
+      score += (Math.random() - 0.5) * 0.9 * mood;
       if (score > bestScore){ bestScore = score; bestX = x; bestY = y; }
     }
 
@@ -1768,6 +1788,8 @@ for (let i=0;i<grass.length;i++){
 
     // 両生は移動範囲を少し広めにする（内陸湖に届きやすくする）
     if (cr.habitat === 2) dist = Math.min(3, dist + 1);
+// 探索性が高い個体は、たまに少しだけ大きく動く
+if (cr.explore > 0.80 && Math.random() < 0.25) dist = Math.min(4, dist + 1);
     const dx = bestX - cr.x;
     const dy = bestY - cr.y;
     const ax = Math.abs(dx);
@@ -1882,6 +1904,14 @@ for (let i=0;i<grass.length;i++){
       const bias = (cr.habitat===2) ? 0.006 : 0.0;
       cr.mutateP = clamp(cr.mutateP + (Math.random()-0.5)*0.02 + bias, 0.01, 0.16);
     }
+
+    // 行動様式の突然変異（小さめに揺らす）
+    if (Math.random() < 0.45) cr.explore  = clamp(cr.explore  + (Math.random()-0.5)*0.22, 0, 1);
+    if (Math.random() < 0.45) cr.homeBias = clamp(cr.homeBias + (Math.random()-0.5)*0.22, 0, 1);
+    if (Math.random() < 0.45) cr.cautious = clamp(cr.cautious + (Math.random()-0.5)*0.22, 0, 1);
+    if (Math.random() < 0.45) cr.social   = clamp(cr.social   + (Math.random()-0.5)*0.22, 0, 1);
+    cr.flock = clamp(0.20 + cr.social * 0.95, 0.10, 1.20);
+
     if (Math.random() < 0.30) cr.shape = pickShape(cr.diet, cr.habitat);
     if (Math.random() < 0.42) cr.pattern = pickPattern(cr.diet, cr.habitat);
     if (Math.random() < 0.35) cr.mark = (cr.mark + rndi(251)) & 255;
@@ -2003,6 +2033,12 @@ if (cr.energy < need) return;
     child.tempOpt = cr.tempOpt;
     child.tempTol = cr.tempTol;
     child.mutateP = cr.mutateP;
+
+    child.explore = cr.explore;
+    child.homeBias = cr.homeBias;
+    child.cautious = cr.cautious;
+    child.social = cr.social;
+
     child.shape = cr.shape;
     child.dir = cr.dir;
 
@@ -2010,8 +2046,18 @@ if (cr.energy < need) return;
     child.pattern = cr.pattern;
     child.mark = cr.mark;
     child.flock = cr.flock;
+    // 群れ性は social と連動
+    child.flock = clamp(0.20 + child.social * 0.95, 0.10, 1.20);
+
     child.homeX = cr.homeX;
     child.homeY = cr.homeY;
+
+    // 草食は「生まれた場所」を住みかにしやすい（定住性の差が出る）
+    if (child.diet === 0){
+      child.homeX = child.x;
+      child.homeY = child.y;
+    }
+
     child.territory = cr.territory;
     child.territorial = cr.territorial;
 
