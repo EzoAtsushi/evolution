@@ -1,14 +1,21 @@
 <!doctype html>
 <html lang="ja">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  
+<meta name="theme-color" content="#0c141c">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+
+<meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover" />
   <title>進化を見守るくん</title>
   <style>
     :root{--bg:#0b0f14;--panel:#101826;--text:#e8eef7;--muted:#aab6c6;}
-    html,body{height:100%;}
-    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,"Noto Sans JP","Hiragino Kaku Gothic ProN",Meiryo,sans-serif;background:linear-gradient(180deg,#06090e,#0b1220);color:var(--text);-webkit-tap-highlight-color:transparent;}
-    .wrap{max-width:980px;margin:0 auto;padding:12px;padding-bottom:calc(12px + env(safe-area-inset-bottom));}
+    *,*::before,*::after{box-sizing:border-box;}
+    html,body{overflow-x:hidden;height:100%;}
+    body{overflow-x:hidden;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,"Noto Sans JP","Hiragino Kaku Gothic ProN",Meiryo,sans-serif;background:linear-gradient(180deg,#06090e,#0b1220);color:var(--text);-webkit-tap-highlight-color:transparent;}
+    .wrap{width:100%;max-width:980px;margin:0 auto;padding:12px;padding-bottom:calc(12px + env(safe-area-inset-bottom));}
     header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px;}
     h1{font-size:16px;margin:0;font-weight:700;letter-spacing:.02em;}
     .sub{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.4;}
@@ -17,22 +24,45 @@
     button:active{transform:translateY(1px);}
     button.primary{border-color:rgba(102,217,239,.35);box-shadow:0 0 0 2px rgba(102,217,239,.10) inset;}
     button.danger{border-color:rgba(255,107,107,.35);box-shadow:0 0 0 2px rgba(255,107,107,.08) inset;}
-    .panel{background:rgba(16,24,38,.65);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:10px;}
+    .panel{min-width:0;background:rgba(16,24,38,.65);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:10px;}
     .stage{display:grid;grid-template-columns:1fr;gap:10px;}
-    .canvasWrap{display:flex;justify-content:center;align-items:center;background:rgba(0,0,0,.25);border-radius:12px;padding:10px;overflow:hidden;}
+    .canvasWrap{display:flex;justify-content:center;align-items:center;background:rgba(0,0,0,.25);border-radius:12px;padding:10px;overflow:hidden;;width:100%text-align:center;}
     
 
-    .viewRow{display:flex;align-items:stretch;gap:10px;}
-    .tempBar{
-      width:14px !important;
-      height:auto !important;
-      aspect-ratio:auto !important;
-      border-radius:8px;
+    .viewRow{
+  position:relative;
+  /* 画面幅に合わせて必ず収まるサイズ（スマホでもセンターずれしにくい） */
+  width:min(92vw, 520px);
+  max-width:100%;
+  margin:0 auto;
+  display:block; /* temp bar is overlay */
+}
+        .tempBar{
+      position:absolute;
+      right:0;
+      top:0;
+      bottom:0;
+      width:12px;
+      height:auto;
+      border-radius:10px;
+      border:0;
+      image-rendering:pixelated;
+      image-rendering:crisp-edges;
+      pointer-events:none;
+      opacity:.55; /* 半透明 */
+    }
+#view{
+      display:block;
+      width:100%;
+      height:auto;
+      aspect-ratio:1/1;
+      border-radius:10px;
       border:1px solid rgba(255,255,255,.10);
       image-rendering:pixelated;
       image-rendering:crisp-edges;
+      touch-action:manipulation;
     }
-#view,#chart{width:min(92vw,540px);height:auto;aspect-ratio:1/1;border-radius:10px;border:1px solid rgba(255,255,255,.10);image-rendering:pixelated;image-rendering:crisp-edges;touch-action:manipulation;}
+#chart{width:min(92vw,540px);height:auto;aspect-ratio:1/1;border-radius:10px;border:1px solid rgba(255,255,255,.10);image-rendering:pixelated;image-rendering:crisp-edges;touch-action:manipulation;}
     .info{display:grid;grid-template-columns:1fr;gap:8px;}
     .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between;font-size:12px;color:var(--muted);}
     .kpi{display:none !important;}
@@ -82,8 +112,10 @@
       box-shadow: 0 0 0 1px rgba(0,0,0,.25) inset;
       flex: 0 0 auto;
     }
-    @media (min-width:860px){.stage{grid-template-columns:1.2fr .8fr;}.kpi{grid-template-columns:repeat(2,minmax(0,1fr));}}
-  </style>
+    @media (min-width:1100px){.stage{grid-template-columns:1.2fr .8fr;}.kpi{grid-template-columns:repeat(2,minmax(0,1fr));}}
+  
+    .stage > *{min-width:0;}
+</style>
 </head>
 <body>
   <div class="wrap">
@@ -169,6 +201,7 @@
   const GRASS_MAX = 255;
   const PICK_RADIUS = 10;
 
+    const MUT_FLASH_FRAMES = 120; // 種分化フラッシュが目立つように光る時間（フレーム）
   const SHAPE_NAMES = ["ブロブ","ひし形","十字","三角","リング","バー"];
   const SHAPE_COUNT = SHAPE_NAMES.length;
   const HAB_NAMES = ["水生","陸生","両生"]; // 両生=水と陸の両方で生きられる
@@ -466,6 +499,20 @@ const elFocusName = $("focusName") || { textContent:"" };
   const AMPH_EAT_EFF = 0.92;         // 両生の食事効率（草/肉の獲得が少し弱い）
   const AMPH_REPRO_NEED_MUL = 0.92;  // 両生の繁殖に必要なエネルギー倍率
 
+  // 動く地形：侵食・堆積（岸の形が少しずつ変わる）＋内陸湖の季節伸縮
+  const seaMask = new Uint8Array(WORLD * WORLD);   // 1=海（境界につながる水）
+  const lakeMax = new Uint8Array(WORLD * WORLD);   // 初期の内陸湖（最大範囲）
+  const lakeEdgeDist = new Uint8Array(WORLD * WORLD); // 湖の縁からの距離（内側ほど大きい）
+  const qWork = new Int32Array(WORLD * WORLD);     // BFSキュー（再利用してGCを抑える）
+  let lakeDepthMax = 0;
+  let lastLakeTh = -1;
+
+  const LAKE_SHRINK_MAX = 6;    // 乾季にどれだけ湖が縮むか（セル）
+  const TERRAIN_UPDATE_EVERY = 90; // 何ステップごとに地形をチェックするか
+  const EROSION_EVERY = 600;      // 侵食・堆積の発生間隔
+  const COAST_ERODE_N = 16;       // 1回の侵食で削れる陸セル数（目標）
+  const COAST_DEPOSIT_N = 12;     // 1回の堆積で増える陸セル数（目標）
+
   function idx(x,y){ return y*WORLD + x; }
 
   function habitatOK(habitat, terr){
@@ -480,7 +527,7 @@ const elFocusName = $("focusName") || { textContent:"" };
     const INF = 65535;
     distWater.fill(INF);
 
-    const q = new Int32Array(WORLD * WORLD);
+    const q = qWork;
     let head = 0, tail = 0;
 
     // 水セルを全部キューに入れる
@@ -533,67 +580,280 @@ const elFocusName = $("focusName") || { textContent:"" };
   let lakeSample = new Int32Array(4096);
   let lakeSampleCount = 0;
 
-  function buildLakeSample(){
-    const N = WORLD * WORLD;
-    const sea = new Uint8Array(N);
-    const q = new Int32Array(N);
+  function computeSeaMask(){
+    // 境界につながる水を「海」として塗る（seaMask=1）
+    seaMask.fill(0);
     let head = 0, tail = 0;
 
-    // 境界の水から開始（ここにつながる水＝海）
+    // 境界の水から開始
     for (let x=0; x<WORLD; x++){
       let i1 = idx(x, 0);
-      if (terrain[i1] === 0 && sea[i1] === 0){ sea[i1]=1; q[tail++]=i1; }
+      if (terrain[i1] === 0 && seaMask[i1] === 0){ seaMask[i1]=1; qWork[tail++]=i1; }
       let i2 = idx(x, WORLD-1);
-      if (terrain[i2] === 0 && sea[i2] === 0){ sea[i2]=1; q[tail++]=i2; }
+      if (terrain[i2] === 0 && seaMask[i2] === 0){ seaMask[i2]=1; qWork[tail++]=i2; }
     }
     for (let y=0; y<WORLD; y++){
       let i1 = idx(0, y);
-      if (terrain[i1] === 0 && sea[i1] === 0){ sea[i1]=1; q[tail++]=i1; }
+      if (terrain[i1] === 0 && seaMask[i1] === 0){ seaMask[i1]=1; qWork[tail++]=i1; }
       let i2 = idx(WORLD-1, y);
-      if (terrain[i2] === 0 && sea[i2] === 0){ sea[i2]=1; q[tail++]=i2; }
+      if (terrain[i2] === 0 && seaMask[i2] === 0){ seaMask[i2]=1; qWork[tail++]=i2; }
     }
 
     while (head < tail){
-      const p = q[head++];
+      const p = qWork[head++];
       const x = p % WORLD;
       const y = (p / WORLD) | 0;
-      // 4近傍
       if (x>0){
         const n = p-1;
-        if (terrain[n]===0 && sea[n]===0){ sea[n]=1; q[tail++]=n; }
+        if (terrain[n]===0 && seaMask[n]===0){ seaMask[n]=1; qWork[tail++]=n; }
       }
       if (x<WORLD-1){
         const n = p+1;
-        if (terrain[n]===0 && sea[n]===0){ sea[n]=1; q[tail++]=n; }
+        if (terrain[n]===0 && seaMask[n]===0){ seaMask[n]=1; qWork[tail++]=n; }
       }
       if (y>0){
         const n = p-WORLD;
-        if (terrain[n]===0 && sea[n]===0){ sea[n]=1; q[tail++]=n; }
+        if (terrain[n]===0 && seaMask[n]===0){ seaMask[n]=1; qWork[tail++]=n; }
       }
       if (y<WORLD-1){
         const n = p+WORLD;
-        if (terrain[n]===0 && sea[n]===0){ sea[n]=1; q[tail++]=n; }
+        if (terrain[n]===0 && seaMask[n]===0){ seaMask[n]=1; qWork[tail++]=n; }
       }
     }
+  }
 
-    // 内陸湖のサンプルを作る（全件は持たない）
+  function buildLakeSample(){
+    // 内陸湖（海につながっていない水）サンプル（湖への定着イベント用。いまは無効化）
+    const N = WORLD * WORLD;
+    computeSeaMask();
+
     lakeSampleCount = 0;
     let seenLakes = 0;
     const K = lakeSample.length;
 
     for (let i=0; i<N; i++){
-      if (terrain[i] !== 0) continue;  // 水だけ
-      if (sea[i] === 1) continue;      // 海は除外
+      if (terrain[i] !== 0) continue;
+      if (seaMask[i] === 1) continue;
 
-      // i は内陸湖
       seenLakes++;
       if (lakeSampleCount < K){
         lakeSample[lakeSampleCount++] = i;
       } else {
-        // リザーバサンプリング：均等にランダムなサンプルを残す
         const r = rndi(seenLakes);
         if (r < K) lakeSample[r] = i;
       }
+    }
+  }
+
+  function initLakeDynamics(){
+    // 「初期の内陸湖」を lakeMax に保持し、縁からの距離を lakeEdgeDist に前計算する
+    const N = WORLD * WORLD;
+    computeSeaMask();
+
+    lakeMax.fill(0);
+    lakeEdgeDist.fill(0);
+
+    // lakeMax を作る
+    for (let i=0; i<N; i++){
+      if (terrain[i] === 0 && seaMask[i] === 0) lakeMax[i] = 1;
+    }
+
+    // 湖が無い場合
+    let any = 0;
+    for (let i=0; i<N; i++){ if (lakeMax[i]){ any=1; break; } }
+    if (!any){
+      lakeDepthMax = 0;
+      lastLakeTh = -1;
+      return;
+    }
+
+    // 湖の縁（境界）から BFS で距離を広げる（内側ほど大きい）
+    let head = 0, tail = 0;
+
+    // 初期化：湖の縁=0、内側=255
+    for (let y=0; y<WORLD; y++){
+      for (let x=0; x<WORLD; x++){
+        const i = idx(x,y);
+        if (!lakeMax[i]) continue;
+
+        let edge = 0;
+        if (x===0 || x===WORLD-1 || y===0 || y===WORLD-1) edge = 1;
+        else {
+          const n1 = i-1, n2=i+1, n3=i-WORLD, n4=i+WORLD;
+          if (!lakeMax[n1] || !lakeMax[n2] || !lakeMax[n3] || !lakeMax[n4]) edge = 1;
+        }
+
+        if (edge){
+          lakeEdgeDist[i] = 0;
+          qWork[tail++] = i;
+        } else {
+          lakeEdgeDist[i] = 255;
+        }
+      }
+    }
+
+    let maxD = 0;
+    while (head < tail){
+      const p = qWork[head++];
+      const d = lakeEdgeDist[p] | 0;
+      if (d > maxD) maxD = d;
+
+      const x = p % WORLD;
+      const y = (p / WORLD) | 0;
+
+      if (x>0){
+        const n = p-1;
+        if (lakeMax[n] && lakeEdgeDist[n] === 255){
+          const nd = d + 1;
+          lakeEdgeDist[n] = nd > 254 ? 254 : nd;
+          qWork[tail++] = n;
+        }
+      }
+      if (x<WORLD-1){
+        const n = p+1;
+        if (lakeMax[n] && lakeEdgeDist[n] === 255){
+          const nd = d + 1;
+          lakeEdgeDist[n] = nd > 254 ? 254 : nd;
+          qWork[tail++] = n;
+        }
+      }
+      if (y>0){
+        const n = p-WORLD;
+        if (lakeMax[n] && lakeEdgeDist[n] === 255){
+          const nd = d + 1;
+          lakeEdgeDist[n] = nd > 254 ? 254 : nd;
+          qWork[tail++] = n;
+        }
+      }
+      if (y<WORLD-1){
+        const n = p+WORLD;
+        if (lakeMax[n] && lakeEdgeDist[n] === 255){
+          const nd = d + 1;
+          lakeEdgeDist[n] = nd > 254 ? 254 : nd;
+          qWork[tail++] = n;
+        }
+      }
+    }
+
+    lakeDepthMax = Math.min(LAKE_SHRINK_MAX, Math.max(2, maxD));
+    lastLakeTh = -1;
+  }
+
+  function applySeasonalLakes(){
+    if (lakeDepthMax <= 0) return;
+
+    // 乾季ほど閾値が大きくなる → 縁側が陸になりやすい
+    const th = Math.floor((1 - seasonWet) * lakeDepthMax + 1e-6);
+    if (th === lastLakeTh) return;
+    lastLakeTh = th;
+
+    computeSeaMask(); // 侵食で海が伸びた場合に、海は縮ませない
+
+    const N = WORLD * WORLD;
+    for (let i=0; i<N; i++){
+      if (!lakeMax[i]) continue;
+      if (seaMask[i]) continue;
+
+      const was = terrain[i];
+      const nw = (lakeEdgeDist[i] > th) ? 0 : 1; // 0=水, 1=陸
+      if (nw === was) continue;
+
+      terrain[i] = nw;
+      // 草はゆっくり馴染ませる
+      const target = nw ? 80 : 45;
+      grass[i] = ((grass[i] * 0.35) + target) | 0;
+      if (nw === 0) bugs[i] = 0;
+    }
+  }
+
+  function applyCoastMorph(){
+    // 侵食（陸→水）と堆積（水→陸）を、岸の近くだけ低頻度で実行
+    computeSeaMask();
+    const N = WORLD * WORLD;
+
+    function hasSeaNeighbor(i){
+      const x = i % WORLD;
+      const y = (i / WORLD) | 0;
+      if (x>0){
+        const n = i-1;
+        if (terrain[n]===0 && seaMask[n]) return true;
+      }
+      if (x<WORLD-1){
+        const n = i+1;
+        if (terrain[n]===0 && seaMask[n]) return true;
+      }
+      if (y>0){
+        const n = i-WORLD;
+        if (terrain[n]===0 && seaMask[n]) return true;
+      }
+      if (y<WORLD-1){
+        const n = i+WORLD;
+        if (terrain[n]===0 && seaMask[n]) return true;
+      }
+      return false;
+    }
+    function hasLandNeighbor(i){
+      const x = i % WORLD;
+      const y = (i / WORLD) | 0;
+      if (x>0 && terrain[i-1]===1) return true;
+      if (x<WORLD-1 && terrain[i+1]===1) return true;
+      if (y>0 && terrain[i-WORLD]===1) return true;
+      if (y<WORLD-1 && terrain[i+WORLD]===1) return true;
+      return false;
+    }
+
+    // 侵食
+    let eroded = 0;
+    let tries = 0;
+    while (eroded < COAST_ERODE_N && tries < 6000){
+      tries++;
+      const i = rndi(N);
+      if (terrain[i] !== 1) continue;
+      // 海岸の陸だけ
+      if (!hasSeaNeighbor(i)) continue;
+      if (Math.random() > 0.16) continue;
+
+      terrain[i] = 0;
+      grass[i] = ((grass[i] * 0.35) + 35) | 0;
+      bugs[i] = 0;
+      eroded++;
+    }
+
+    // 堆積
+    computeSeaMask(); // 侵食の結果を反映
+    let deposited = 0;
+    tries = 0;
+    while (deposited < COAST_DEPOSIT_N && tries < 8000){
+      tries++;
+      const i = rndi(N);
+      if (terrain[i] !== 0) continue;
+      if (!seaMask[i]) continue; // 海の水だけ
+      if (!hasLandNeighbor(i)) continue; // 岸の水だけ
+      if (Math.random() > 0.14) continue;
+
+      terrain[i] = 1;
+      grass[i] = ((grass[i] * 0.35) + 55) | 0;
+      deposited++;
+    }
+  }
+
+  function updateDynamicTerrain(){
+    // 湖の季節変化は細かく、侵食・堆積はまれに
+    if ((step % TERRAIN_UPDATE_EVERY) === 0){
+      applySeasonalLakes();
+      // 閾値が変わってない場合でも、海岸線が動いて湿地判定がズレないように、ときどき更新
+      computeShore();
+      computeDistToWater();
+      computeWetland();
+    }
+
+    if ((step % EROSION_EVERY) === 0){
+      applyCoastMorph();
+      computeShore();
+      computeDistToWater();
+      computeWetland();
+      // 内陸湖が新しくできたり海につながったりするので、サンプルは作り直す（テレポは無効だが安全のため）
+      buildLakeSample();
     }
   }
 
@@ -645,11 +905,41 @@ const elFocusName = $("focusName") || { textContent:"" };
   const densHerb = new Uint16Array(DENS * DENS);
   const densCarn = new Uint16Array(DENS * DENS);
 
+  // 種ごとの近傍判定用（密度セル内の連結リスト）
+  const densHead = new Int32Array(DENS * DENS);
+  const densNext = new Int32Array(MAX_CREATURES);
   function densIndex(x,y){
     const gx = clamp((x / DENS_CELL)|0, 0, DENS-1);
     const gy = clamp((y / DENS_CELL)|0, 0, DENS-1);
     return gy * DENS + gx;
   }
+
+// 近傍（密度セル半径r）で、同種/別種の個体数を数える（dietでフィルタ）
+// 返り値は (same<<16) | other
+function speciesCountsPacked(x,y, diet, speciesId, excludeId=0, r=1){
+  const gx0 = clamp((x / DENS_CELL)|0, 0, DENS-1);
+  const gy0 = clamp((y / DENS_CELL)|0, 0, DENS-1);
+  let same = 0, other = 0;
+
+  for (let gy=gy0-r; gy<=gy0+r; gy++){
+    if (gy<0||gy>=DENS) continue;
+    for (let gx=gx0-r; gx<=gx0+r; gx++){
+      if (gx<0||gx>=DENS) continue;
+      const di = gy * DENS + gx;
+
+      let i = densHead[di];
+      while (i !== -1){
+        const c = creatures[i];
+        if (!c) break;
+        if (c.alive && c.diet === diet && c.id !== excludeId){
+          if (c.species === speciesId) same++; else other++;
+        }
+        i = densNext[i];
+      }
+    }
+  }
+  return (same<<16) | (other & 0xffff);
+}
 
   // 生物
   let nextId = 1;
@@ -659,13 +949,15 @@ const elFocusName = $("focusName") || { textContent:"" };
   const SEASON_AMP = 32;      // 温度(0..255)の揺れ幅（±）      // 温度(0..255)の揺れ幅（±）
   const TEMP_MARGIN = 40;   // 季節で端が潰れないように、基準温度を 40..215 にする
   let seasonOffset = 0;
+  let seasonWet = 0.5; // 0..1 (湿り気の指標)
 
   function updateSeason(){
     const phase = ((step % SEASON_PERIOD) / SEASON_PERIOD) * Math.PI * 2;
-    seasonOffset = Math.round(Math.sin(phase) * SEASON_AMP);
+    const s = Math.sin(phase);
+    seasonOffset = Math.round(s * SEASON_AMP);
+    seasonWet = 0.5 + 0.5 * s; // 夏(暖)ほど湿りやすい想定
   }
-
-  let paused = false;
+let paused = false;
   let focusId = 0;
   let rootSpecies = 0;
 
@@ -725,6 +1017,7 @@ this.x = x;
       this.age = 0;
       this.cooldown = 0;
       this.alive = true;
+      this.flash = 0;
     }
   }
 
@@ -733,11 +1026,17 @@ this.x = x;
   function rebuildDensity(){
     densHerb.fill(0);
     densCarn.fill(0);
+    densHead.fill(-1);
+
     for (let i=0;i<creatures.length;i++){
       const c = creatures[i];
       if (!c.alive) continue;
       const di = densIndex(c.x, c.y);
       if (c.diet === 0) densHerb[di]++; else densCarn[di]++;
+
+      // 近傍探索用リスト（全個体）
+      densNext[i] = densHead[di];
+      densHead[di] = i;
     }
   }
   // ログはUIから削除（処理負荷を避けるため no-op）
@@ -1563,6 +1862,8 @@ if (type === 0){
     // 内陸湖サンプルを作る（湖への定着イベント用）
     buildLakeSample();
 
+    initLakeDynamics();
+
     computeDistToWater();
 
     
@@ -1745,10 +2046,19 @@ for (let i=0;i<grass.length;i++){
         const social = cr.social;
         const cautious = cr.cautious;
 
-        // 群れ性：同種密度がほどほどだと有利（群れすぎると不利）
-        const flock = clamp(0.20 + social * 0.95, 0.10, 1.20);
-        score += flock * (hD * 1.7 - hD*hD * 0.18);
+        // 群れ性：同種の近くに寄りやすい（別種が多い場所は避ける）
+const flock = clamp(0.20 + social * 0.95, 0.10, 1.20);
 
+const packed = speciesCountsPacked(x,y, 0, cr.species, cr.id, 1);
+const sameS  = packed >>> 16;
+const otherS = packed & 0xffff;
+
+// 同種は「ほどほど」が好き（集まりすぎは不利）。別種は嫌う。
+score += (0.55 + social*1.10) * (sameS * 2.0 - sameS*sameS * 0.22);
+score -= (0.35 + social*0.90) * otherS * 1.10;
+
+// 旧来の“草食密度”も少し残す（群れが全く起きないのを防ぐ）
+score += flock * (hD * 0.45 - hD*hD * 0.03);
         // 慎重：捕食者密度をより強く嫌う
         score -= (0.85 + flock*0.70) * cD * (0.75 + cautious*1.10);
 
@@ -2014,8 +2324,30 @@ if (cr.explore > 0.80 && Math.random() < 0.25) dist = Math.min(4, dist + 1);
     
     // 湿地（両生の主戦場）では少し繁殖しやすくする
     if (cr.habitat === 2 && wetland[idx(cr.x, cr.y)]) need *= 0.82;
+
 if (cr.energy < need) return;
     if (creatures.length >= MAX_CREATURES) return;
+
+// 同じ種が近くにいるほど繁殖しやすい／別種が多いほど繁殖しにくい（眺めて分かる分化を作る）
+    // ※本作は簡易モデルなので「交配」は表現せず、近傍の構成で繁殖成功率を揺らす
+    // ただし強くしすぎると肉食が増えにくくなるので、肉食は影響を弱める
+    const mateRad = (cr.diet === 1) ? 2 : 1; // 肉食は少し広めに見る
+    const packM = speciesCountsPacked(cr.x, cr.y, cr.diet, cr.species, cr.id, mateRad);
+    const sameM = packM >>> 16;
+    const otherM = packM & 0xffff;
+
+    let mateP;
+    if (cr.diet === 1){
+      // 肉食：分化の影響は弱め（孤立しやすいので）
+      mateP = 0.72 + 0.06 * Math.min(6, sameM) - 0.02 * Math.min(6, otherM);
+    } else {
+      // 草食：同種優遇を少し効かせる
+      mateP = 0.66 + 0.10 * Math.min(6, sameM) - 0.05 * Math.min(6, otherM);
+    }
+    mateP = clamp(mateP, 0.25, 0.98);
+    if (Math.random() > mateP) return; // 今回は繁殖に失敗
+
+
 
     cr.energy *= 0.52;
     cr.cooldown = (cr.habitat === 2) ? (26 + rndi(30)) : (22 + rndi(25));
@@ -2117,11 +2449,9 @@ if (cr.energy < need) return;
       }
     }
 
-    const speciated = maybeSpeciate(cr, child, mutated, dietChanged);
-
-    if (mutated || dietChanged || habitatChanged || speciated){
-    }
-
+          maybeSpeciate(cr, child, mutated, dietChanged);
+      const speciated = (child.species !== cr.species);
+    if (speciated) child.flash = MUT_FLASH_FRAMES;
     child.energy = 70 + rnd(35);
 
     // 生まれる位置は少しだけズラす（ただし生活場所は守る）
@@ -2156,6 +2486,8 @@ if (cr.energy < need) return;
       }
     }
 
+        // 種分化した子だけ、しばらく強く発光
+    if (speciated) child.flash = MUT_FLASH_FRAMES;
     creatures.push(child);
   }
 
@@ -2201,6 +2533,7 @@ if (cr.energy < need) return;
     updateSeason();
     growGrass();
     growBugs();
+    updateDynamicTerrain();
 
     if ((step % 2) === 0) rebuildDensity();
 
@@ -2208,6 +2541,7 @@ if (cr.energy < need) return;
       const cr = creatures[i];
       if (!cr.alive) continue;
 
+      if (cr.flash && cr.flash>0) cr.flash--;
       cr.age++;
       if (cr.cooldown > 0) cr.cooldown--;
 
@@ -2257,6 +2591,7 @@ if (cr.energy < need) return;
     if ((step % 12) === 0){
       const before = creatures.length;
       creatures = creatures.filter(c => c.alive);
+      rebuildDensity();
       const dead = before - creatures.length;
       if (dead > 0 && Math.random() < 0.35) addLog(`死亡 ${dead}`);
     }
@@ -2447,6 +2782,55 @@ if (cr.energy < need) return;
           setPix(i, rr|0, gg|0, bb|0);
         }
       }
+// 種分化フラッシュ（輪郭を強く光らせる）
+if (cr.flash && cr.flash>0){
+  const p = cr.flash / MUT_FLASH_FRAMES; // 1→0
+  const br = Math.max(3, Math.ceil((s - 1) / 2) + 3);
+
+  const w0 = (210 + 45 * p) | 0; // 白っぽい外側リング
+  const wg = (160 + 70 * p) | 0; // 内側の暖色（黄寄り）
+  const wb = ( 60 + 120 * p) | 0;
+
+  // 外側リング（太さ2）
+  for (let dy=-br; dy<=br; dy++){
+    const yy = cr.y + dy; if (yy<0||yy>=WORLD) continue;
+    for (let dx=-br; dx<=br; dx++){
+      const xx = cr.x + dx; if (xx<0||xx>=WORLD) continue;
+      const adx = dx<0 ? -dx : dx;
+      const ady = dy<0 ? -dy : dy;
+      if (adx===br || ady===br || adx===br-1 || ady===br-1){
+        const ii = idx(xx,yy);
+        const pp = ii*4;
+        pix[pp]   = Math.max(pix[pp],   w0);
+        pix[pp+1] = Math.max(pix[pp+1], w0);
+        pix[pp+2] = Math.max(pix[pp+2], w0);
+        pix[pp+3] = 255;
+      }
+    }
+  }
+  // 内側の暖色リング
+  const br2 = br - 2;
+  if (br2 >= 2){
+    for (let dy=-br2; dy<=br2; dy++){
+      const yy = cr.y + dy; if (yy<0||yy>=WORLD) continue;
+      for (let dx=-br2; dx<=br2; dx++){
+        const xx = cr.x + dx; if (xx<0||xx>=WORLD) continue;
+        const adx = dx<0 ? -dx : dx;
+        const ady = dy<0 ? -dy : dy;
+        if (adx===br2 || ady===br2){
+          const ii = idx(xx,yy);
+          const pp = ii*4;
+          pix[pp]   = Math.max(pix[pp],   255);
+          pix[pp+1] = Math.max(pix[pp+1], wg);
+          pix[pp+2] = Math.max(pix[pp+2], wb);
+          pix[pp+3] = 255;
+        }
+      }
+    }
+  }
+}
+
+
 
       // 目（向きに合わせる）
       if (s >= 2){
@@ -2484,9 +2868,9 @@ if (cr.energy < need) return;
             if (Math.abs(dx)===br || Math.abs(dy)===br){
               const i = idx(xx,yy);
               const p = i*4;
-              pix[p]   = max(pix[p], 235);
-              pix[p+1] = max(pix[p+1], 235);
-              pix[p+2] = max(pix[p+2], 235);
+              pix[p]   = Math.max(pix[p], 235);
+              pix[p+1] = Math.max(pix[p+1], 235);
+              pix[p+2] = Math.max(pix[p+2], 235);
               pix[p+3] = 255;
             }
           }
@@ -2632,5 +3016,13 @@ lastSample = 0;
     }
 })();
 </script>
+<script>
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("./sw.js").catch(() => {});
+    });
+  }
+</script>
+
 </body>
 </html>
